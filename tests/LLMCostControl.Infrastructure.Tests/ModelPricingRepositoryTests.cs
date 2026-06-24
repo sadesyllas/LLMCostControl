@@ -1,0 +1,65 @@
+using LLMCostControl.Domain.Common;
+using LLMCostControl.Domain.Pricing;
+using LLMCostControl.Infrastructure.Repositories;
+
+namespace LLMCostControl.Infrastructure.Tests;
+
+public class ModelPricingRepositoryTests : RepositoryTestBase
+{
+    [Fact]
+    public async Task Upsert_then_GetByModel_returns_pricing()
+    {
+        var pricing = ModelPricing.Create(
+            Provider.OpenAI,
+            "gpt-4o",
+            TokenPrices.Create(2.5m, 10m, 1.25m));
+
+        var repo = new ModelPricingRepository(Db);
+        await repo.UpsertAsync(pricing);
+
+        var fetched = await repo.GetByModelAsync("gpt-4o");
+        fetched.Should().NotBeNull();
+        fetched!.Provider.Should().Be(Provider.OpenAI);
+        fetched.Prices.Input.Should().Be(2.5m);
+        fetched.Prices.Output.Should().Be(10m);
+        fetched.Prices.CacheRead.Should().Be(1.25m);
+    }
+
+    [Fact]
+    public async Task Upsert_replaces_existing_pricing_for_same_model()
+    {
+        var repo = new ModelPricingRepository(Db);
+        await repo.UpsertAsync(ModelPricing.Create(
+            Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m)));
+
+        await repo.UpsertAsync(ModelPricing.Create(
+            Provider.OpenAI, "gpt-4o", TokenPrices.Create(5m, 15m)));
+
+        var all = await repo.GetAllAsync();
+        all.Should().HaveCount(1);
+        all[0].Prices.Input.Should().Be(5m);
+        all[0].Prices.Output.Should().Be(15m);
+    }
+
+    [Fact]
+    public async Task ReplaceProviderPricing_removes_old_and_inserts_new()
+    {
+        var repo = new ModelPricingRepository(Db);
+        await repo.UpsertAsync(ModelPricing.Create(
+            Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m)));
+        await repo.UpsertAsync(ModelPricing.Create(
+            Provider.OpenAI, "gpt-4o-mini", TokenPrices.Create(0.15m, 0.6m)));
+
+        var newEntries = new[]
+        {
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o", TokenPrices.Create(3m, 12m)),
+            ModelPricing.Create(Provider.OpenAI, "o1", TokenPrices.Create(15m, 60m)),
+        };
+        await repo.ReplaceProviderPricingAsync(Provider.OpenAI, newEntries);
+
+        var openai = await repo.GetByProviderAsync(Provider.OpenAI);
+        openai.Should().HaveCount(2);
+        openai.Select(p => p.Model).Should().BeEquivalentTo(["gpt-4o", "o1"]);
+        (await repo.GetByModelAsync("gpt-4o-mini")).Should().BeNull();
+    }
+}
