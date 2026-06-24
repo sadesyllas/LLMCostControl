@@ -1,0 +1,63 @@
+{
+  "title": "LLM Cost Tracker — Overview",
+  "uid": "llmcost-tracker-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "browser",
+  "refresh": "10s",
+  "tags": ["llmcost", "tracker"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Check / Capture requests",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(llmcost_http_requests_total[1m])) by (endpoint, outcome)",
+          "legendFormat": "{{endpoint}} / {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Capture cost (USD)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(llmcost_capture_cost_total[1m])) by (model)",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Tokens captured (rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(llmcost_tokens_captured_total[1m])) by (kind)",
+          "legendFormat": "{{kind}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Pricing staleness (seconds)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "llmcost_pricing_staleness_seconds",
+          "legendFormat": "{{provider}}"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  path_prefix: /loki/data
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/data/tsdb-index
+    cache_location: /loki/data/tsdb-cache
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  allow_structured_metadata: false
