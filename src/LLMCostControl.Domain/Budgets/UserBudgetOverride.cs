@@ -15,7 +15,7 @@ public class UserBudgetOverride
     public CallerId CallerId { get; init; }
 
     /// <summary>The budget amount and currency.</summary>
-    public Money Amount { get; set; }
+    public required Money Amount { get; set; }
 
     /// <summary>The budget period this override applies to.</summary>
     public BudgetPeriod Period { get; init; }

@@ -5,7 +5,7 @@ namespace LLMCostControl.Domain.Pricing;
 /// optional cache-write. Prices are non-negative; cache prices may be null when
 /// the model has no cache concept.
 /// </summary>
-public readonly record struct TokenPrices
+public sealed record TokenPrices
 {
     /// <summary>Unit price for non-cached input tokens (per 1M tokens).</summary>
     public decimal Input { get; init; }

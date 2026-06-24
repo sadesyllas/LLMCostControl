@@ -14,7 +14,7 @@ public class GroupBudget
     public Guid GroupId { get; init; }
 
     /// <summary>The budget amount and currency.</summary>
-    public Money Amount { get; set; }
+    public required Money Amount { get; set; }
 
     /// <summary>The budget period this amount applies to.</summary>
     public BudgetPeriod Period { get; init; }

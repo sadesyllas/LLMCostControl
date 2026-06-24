@@ -19,7 +19,7 @@ public record EffectiveBudget
     public Guid? GroupId { get; init; }
 
     /// <summary>True when there is a non-zero budget amount.</summary>
-    public bool HasBudget => Amount is not null && !Amount.Value.IsZero;
+    public bool HasBudget => Amount is not null && !Amount.IsZero;
 
     /// <summary>Creates an <see cref="EffectiveBudget"/> from a per-user override.</summary>
     public static EffectiveBudget FromUserOverride(Money amount) => new()

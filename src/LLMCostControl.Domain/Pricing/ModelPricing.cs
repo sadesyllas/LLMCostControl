@@ -16,7 +16,7 @@ public class ModelPricing
     public string Model { get; init; } = string.Empty;
 
     /// <summary>The unit token prices for this model.</summary>
-    public TokenPrices Prices { get; init; }
+    public required TokenPrices Prices { get; init; }
 
     /// <summary>The currency the prices are denominated in (e.g. USD).</summary>
     public string Currency { get; init; } = "USD";

@@ -46,7 +46,7 @@ public class UsageEvent
     public long TokensCacheWrite { get; init; }
 
     /// <summary>Snapshot of the unit prices used to compute the cost.</summary>
-    public TokenPrices UnitPrices { get; init; }
+    public required TokenPrices UnitPrices { get; init; }
 
     /// <summary>The computed cost amount.</summary>
     public decimal CostAmount { get; init; }

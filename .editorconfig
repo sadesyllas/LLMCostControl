@@ -17,3 +17,8 @@ csharp_new_line_before_open_brace = all
 csharp_style_var_for_built_in_types = false:suggestion
 csharp_style_var_when_type_is_apparent = true:suggestion
 dotnet_sort_system_directives_first = true
+
+# Auto-generated EF Core migrations: block-scoped namespaces are fine
+[**/Migrations/*.cs]
+csharp_style_namespace_declarations = block_scoped:silent
+generated_code = true

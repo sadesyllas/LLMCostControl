@@ -4,7 +4,7 @@ namespace LLMCostControl.Domain.Common;
 /// An amount of money in a specific currency. Money values can only be added or
 /// subtracted when they share the same currency; mixing currencies throws.
 /// </summary>
-public readonly record struct Money
+public sealed record Money
 {
     /// <summary>The numeric amount.</summary>
     public decimal Amount { get; }
