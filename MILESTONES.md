@@ -10,7 +10,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 | # | Milestone | Spec ref | Depends on | Done? | Tested? |
 | --- | --- | --- | --- | --- | --- |
-| M0 | Repo & solution scaffolding | §11 | — | [ ] | [ ] |
+| M0 | Repo & solution scaffolding | §11 | — | [x] | [x] |
 | M1 | Local dev dependencies (docker compose) | §14 | M0 | [ ] | [ ] |
 | M2 | Observability skeleton (Serilog + OTel SDK) | §10.1, §10.2* | M0, M1 | [ ] | [ ] |
 | M3 | Domain model | §11 (Domain) | M0 | [ ] | [ ] |
@@ -37,7 +37,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §11
 - **Depends on:** —
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - Git repo initialised at repo root.
   - .NET 11 solution with 4 src projects (`LLMCostControl.Domain`,
