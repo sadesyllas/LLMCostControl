@@ -28,23 +28,20 @@ services:
     ports:
       - "4317:4317"   # OTLP gRPC (apps push here)
       - "4318:4318"   # OTLP http
+      - "13133:13133" # health check
     depends_on:
       - loki
       - tempo
       - prometheus
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
 
   loki:
     image: grafana/loki:latest
     container_name: llmcost-loki
+    user: root
     command: ["-config.file=/etc/loki/loki.yml"]
     volumes:
       - ./docker/loki/loki.yml:/etc/loki/loki.yml:ro
-      - loki-data:/loki/data
+      - loki-data:/loki
     ports:
       - "3100:3100"
 
@@ -94,6 +91,7 @@ services:
     container_name: llmcost-seq
     environment:
       ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_NOAUTHENTICATION: "true"
       SEQ_FIRSTRUN_REQUIREAUTHENTICATIONFORINGESTION: "false"
     ports:
       - "8081:80"

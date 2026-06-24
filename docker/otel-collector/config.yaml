@@ -13,6 +13,10 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 25
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 exporters:
   # Traces -> Tempo
   otlp/tempo:
@@ -22,13 +26,14 @@ exporters:
   # Metrics -> Prometheus (exposed for scraping)
   prometheusremotewrite:
     endpoint: http://prometheus:9090/api/v1/write
-  # Logs -> Loki
+  # Logs -> Loki (OTLP via Loki's gRPC port)
   otlp/loki:
-    endpoint: http://loki:4317
+    endpoint: http://loki:9096
     tls:
       insecure: true
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
