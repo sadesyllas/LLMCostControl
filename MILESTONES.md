@@ -15,7 +15,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M2 | Observability skeleton (Serilog + OTel SDK) | §10.1, §10.2* | M0, M1 | [x] | [x] |
 | M3 | Domain model | §11 (Domain) | M0 | [x] | [x] |
 | M4 | Infrastructure: EF Core + migrations + repositories | §11 (Infra), §9.2, §9.4 | M3, M1 | [x] | [x] |
-| M5 | Pricing adapter abstraction + canonical file schema | §8.2, §8.5 | M3 | [ ] | [ ] |
+| M5 | Pricing adapter abstraction + canonical file schema | §8.2, §8.5 | M3 | [x] | [x] |
 | M6 | Provider adapters (Google, OpenAI, Anthropic) | §8.2 | M5, M4 | [ ] | [ ] |
 | M7 | Pricing refresh job | §8.4 | M6 | [ ] | [ ] |
 | M8 | Orleans silo host + grain interfaces + storage | §9.1, §8.6 | M4 | [ ] | [ ] |
@@ -126,7 +126,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §8.2 (interface), §8.5 (schema)
 - **Depends on:** M3
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - `IPricingAdapter` interface (`FetchAsync` → `IReadOnlyCollection<ModelPricing>`).
   - Canonical pricing-file schema binding (JSON + YAML) with a **validator**.
