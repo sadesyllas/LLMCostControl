@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Sdk" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LLMCostControl.Grains.Abstractions\LLMCostControl.Grains.Abstractions.csproj" />
+    <ProjectReference Include="..\LLMCostControl.Infrastructure\LLMCostControl.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -2,6 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/LLMCostControl.Admin.App/LLMCostControl.Admin.App.csproj" />
     <Project Path="src/LLMCostControl.Domain/LLMCostControl.Domain.csproj" />
+    <Project Path="src/LLMCostControl.Grains.Abstractions/LLMCostControl.Grains.Abstractions.csproj" />
+    <Project Path="src/LLMCostControl.Grains/LLMCostControl.Grains.csproj" />
     <Project Path="src/LLMCostControl.Infrastructure/LLMCostControl.Infrastructure.csproj" />
     <Project Path="src/LLMCostControl.Observability/LLMCostControl.Observability.csproj" />
     <Project Path="src/LLMCostControl.Tracker.Api/LLMCostControl.Tracker.Api.csproj" />

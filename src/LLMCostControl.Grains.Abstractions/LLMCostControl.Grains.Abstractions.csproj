@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Sdk" />
+    <PackageReference Include="Microsoft.Orleans.Streaming" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LLMCostControl.Domain\LLMCostControl.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
