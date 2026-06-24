@@ -27,3 +27,8 @@
    message that references the milestone it belongs to (e.g. `M0: scaffold src
    projects`), and leave the repository in a buildable state. Never commit
    secrets.
+
+6. **Document all types and public methods.** Every class, record, struct,
+   enum, interface, and every public method/property must have an XML doc
+   comment (`///`) that concisely explains what it does. This applies to
+   production code; test code is exempt.
