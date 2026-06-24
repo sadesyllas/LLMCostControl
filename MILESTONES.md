@@ -14,7 +14,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M1 | Local dev dependencies (docker compose) | §14 | M0 | [x] | [x] |
 | M2 | Observability skeleton (Serilog + OTel SDK) | §10.1, §10.2* | M0, M1 | [x] | [x] |
 | M3 | Domain model | §11 (Domain) | M0 | [x] | [x] |
-| M4 | Infrastructure: EF Core + migrations + repositories | §11 (Infra), §9.2, §9.4 | M3, M1 | [ ] | [ ] |
+| M4 | Infrastructure: EF Core + migrations + repositories | §11 (Infra), §9.2, §9.4 | M3, M1 | [x] | [x] |
 | M5 | Pricing adapter abstraction + canonical file schema | §8.2, §8.5 | M3 | [ ] | [ ] |
 | M6 | Provider adapters (Google, OpenAI, Anthropic) | §8.2 | M5, M4 | [ ] | [ ] |
 | M7 | Pricing refresh job | §8.4 | M6 | [ ] | [ ] |
@@ -107,7 +107,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §11 (`LLMCostControl.Infrastructure`), §9.2, §9.4
 - **Depends on:** M3, M1
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - EF Core `DbContext` + entity mappings for: groups, group memberships, group
     budgets, per-user budget overrides, model pricing (current + history), and
