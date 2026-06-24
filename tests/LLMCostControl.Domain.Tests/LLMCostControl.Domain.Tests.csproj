@@ -17,4 +17,8 @@
     <Using Include="FluentAssertions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LLMCostControl.Domain\LLMCostControl.Domain.csproj" />
+  </ItemGroup>
+
 </Project>
