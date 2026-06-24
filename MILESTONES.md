@@ -16,7 +16,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M3 | Domain model | §11 (Domain) | M0 | [x] | [x] |
 | M4 | Infrastructure: EF Core + migrations + repositories | §11 (Infra), §9.2, §9.4 | M3, M1 | [x] | [x] |
 | M5 | Pricing adapter abstraction + canonical file schema | §8.2, §8.5 | M3 | [x] | [x] |
-| M6 | Provider adapters (Google, OpenAI, Anthropic) | §8.2 | M5, M4 | [ ] | [ ] |
+| M6 | Provider adapters (Google, OpenAI, Anthropic) | §8.2 | M5, M4 | [x] | [x] |
 | M7 | Pricing refresh job | §8.4 | M6 | [ ] | [ ] |
 | M8 | Orleans silo host + grain interfaces + storage | §9.1, §8.6 | M4 | [ ] | [ ] |
 | M9 | PricingGrain ([StatelessWorker] + stream sub) | §8.6 | M8, M7 | [ ] | [ ] |
@@ -143,7 +143,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §8.2 (hybrid strategy)
 - **Depends on:** M5, M4
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - One adapter per provider, each implementing `IPricingAdapter`.
   - Each does: live fetch from the provider's published source → on failure (or
