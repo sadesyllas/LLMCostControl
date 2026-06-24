@@ -1,6 +1,10 @@
 using LLMCostControl.Admin.App.Components;
+using LLMCostControl.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseObservability("LLMCostControl.Admin.App");
+builder.ConfigureObservability("LLMCostControl.Admin.App");
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
