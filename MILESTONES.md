@@ -12,7 +12,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | --- | --- | --- | --- | --- | --- |
 | M0 | Repo & solution scaffolding | §11 | — | [x] | [x] |
 | M1 | Local dev dependencies (docker compose) | §14 | M0 | [x] | [x] |
-| M2 | Observability skeleton (Serilog + OTel SDK) | §10.1, §10.2* | M0, M1 | [ ] | [ ] |
+| M2 | Observability skeleton (Serilog + OTel SDK) | §10.1, §10.2* | M0, M1 | [x] | [x] |
 | M3 | Domain model | §11 (Domain) | M0 | [ ] | [ ] |
 | M4 | Infrastructure: EF Core + migrations + repositories | §11 (Infra), §9.2, §9.4 | M3, M1 | [ ] | [ ] |
 | M5 | Pricing adapter abstraction + canonical file schema | §8.2, §8.5 | M3 | [ ] | [ ] |
@@ -73,7 +73,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 - **Spec ref:** §10.1, §10.2 (partial — **without** effective-group tagging yet;
   that is M15 once grains resolve the group)
 - **Depends on:** M0, M1
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - Serilog wired into both apps; **console sink** in Development; sinks are
     config-driven via `appsettings.json`.
