@@ -1,12 +1,28 @@
 namespace LLMCostControl.Domain.Pricing;
 
+/// <summary>
+/// The per-1M-token unit prices for a model: input, output, cache-read, and
+/// optional cache-write. Prices are non-negative; cache prices may be null when
+/// the model has no cache concept.
+/// </summary>
 public readonly record struct TokenPrices
 {
+    /// <summary>Unit price for non-cached input tokens (per 1M tokens).</summary>
     public decimal Input { get; init; }
+
+    /// <summary>Unit price for generated output tokens (per 1M tokens).</summary>
     public decimal Output { get; init; }
+
+    /// <summary>Unit price for cached input tokens; null when no cache concept.</summary>
     public decimal? CacheRead { get; init; }
+
+    /// <summary>Unit price for tokens written to the provider cache; null when N/A.</summary>
     public decimal? CacheWrite { get; init; }
 
+    /// <summary>
+    /// Creates a <see cref="TokenPrices"/> value, validating that all supplied
+    /// prices are non-negative.
+    /// </summary>
     public static TokenPrices Create(
         decimal input,
         decimal output,
