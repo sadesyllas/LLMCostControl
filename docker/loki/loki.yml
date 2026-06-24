@@ -10,6 +10,7 @@ common:
   ring:
     kvstore:
       store: inmemory
+  replication_factor: 1
   storage:
     filesystem:
       chunks_directory: /loki/chunks
@@ -38,7 +39,7 @@ storage_config:
     cache_location: /loki/tsdb-cache
 
 limits_config:
-  allow_structured_metadata: false
+  allow_structured_metadata: true
   reject_old_samples: false
 
 analytics:

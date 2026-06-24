@@ -23,12 +23,12 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
-  # Metrics -> Prometheus (exposed for scraping)
+  # Metrics -> Prometheus (remote write)
   prometheusremotewrite:
     endpoint: http://prometheus:9090/api/v1/write
-  # Logs -> Loki (OTLP via Loki's gRPC port)
-  otlp/loki:
-    endpoint: http://loki:9096
+  # Logs -> Loki (via OTLP HTTP on Loki's distributor)
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
     tls:
       insecure: true
 
@@ -46,4 +46,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/loki]
+      exporters: [otlphttp/loki]
