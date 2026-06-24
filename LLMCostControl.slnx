@@ -3,12 +3,14 @@
     <Project Path="src/LLMCostControl.Admin.App/LLMCostControl.Admin.App.csproj" />
     <Project Path="src/LLMCostControl.Domain/LLMCostControl.Domain.csproj" />
     <Project Path="src/LLMCostControl.Infrastructure/LLMCostControl.Infrastructure.csproj" />
+    <Project Path="src/LLMCostControl.Observability/LLMCostControl.Observability.csproj" />
     <Project Path="src/LLMCostControl.Tracker.Api/LLMCostControl.Tracker.Api.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/LLMCostControl.Admin.App.Tests/LLMCostControl.Admin.App.Tests.csproj" />
     <Project Path="tests/LLMCostControl.Domain.Tests/LLMCostControl.Domain.Tests.csproj" />
     <Project Path="tests/LLMCostControl.Infrastructure.Tests/LLMCostControl.Infrastructure.Tests.csproj" />
+    <Project Path="tests/LLMCostControl.Observability.Tests/LLMCostControl.Observability.Tests.csproj" />
     <Project Path="tests/LLMCostControl.Tracker.Api.Tests/LLMCostControl.Tracker.Api.Tests.csproj" />
   </Folder>
 </Solution>
