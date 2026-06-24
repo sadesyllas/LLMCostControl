@@ -1,0 +1,22 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+artifacts/
+TestResults/
+
+## Secrets
+appsettings.*.Local.json
+*.secret.json
+.env
+.env.*
+
+## IDE
+.idea/
+*.swp
+
+## OS
+.DS_Store
+Thumbs.db
