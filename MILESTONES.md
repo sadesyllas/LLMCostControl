@@ -28,7 +28,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M15 | Effective-group telemetry tagging | §10.2 | M10, M11, M2 | [x] | [x] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | §12.1, §12.2 | M4 | [x] | [x] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | §12.3 | M16, M4 | [x] | [x] |
-| M18 | Admin app: read-only views + pricing file upload | §12.3 | M17, M5 | [ ] | [ ] |
+| M18 | Admin app: read-only views + pricing file upload | §12.3 | M17, M5 | [x] | [x] |
 | M19 | Contract/conformance tests + E2E local-dev verification | §13.4, §14.3 | M13, M14, M15, M18 | [ ] | [ ] |
 
 ---
@@ -336,7 +336,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §12.3 (read-only views + pricing file management)
 - **Depends on:** M17, M5
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - Views: effective budget & current running spend per caller id (computed via
     shared resolution logic); current pricing per model/provider with
