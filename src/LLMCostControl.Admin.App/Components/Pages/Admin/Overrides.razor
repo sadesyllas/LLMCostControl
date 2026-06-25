@@ -1,0 +1,106 @@
+@page "/Admin/Overrides"
+@attribute [Authorize(Policy = AppRoles.AdminPolicy)]
+@inject IGroupAdminService AdminService
+@using LLMCostControl.Admin.App.Services
+@using LLMCostControl.Domain.Budgets
+@using LLMCostControl.Domain.Common
+
+<PageTitle>Per-user Budget Overrides</PageTitle>
+
+<h1 id="overrides-heading">Per-user Budget Overrides</h1>
+
+<!-- Lookup form -->
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Look up a caller</h5>
+        <div class="input-group">
+            <input type="text" class="form-control" placeholder="caller@example.com"
+                   @bind="_lookupId" id="lookup-caller-input" />
+            <button class="btn btn-secondary" @onclick="LookupAsync" id="lookup-btn">
+                Look up
+            </button>
+        </div>
+    </div>
+</div>
+
+@if (_found)
+{
+    <div class="card" id="override-result">
+        <div class="card-body">
+            <h5 class="card-title">Override for @_lookupId (@_currentPeriod.Year-@_currentPeriod.Month.ToString("D2"))</h5>
+
+            @if (_override is not null)
+            {
+                <p id="override-display">
+                    Current: <strong>@_override.Amount.Amount @_override.Amount.Currency</strong>
+                    <button class="btn btn-sm btn-outline-danger ms-2"
+                            @onclick="ClearOverrideAsync" id="clear-override-btn">
+                        Clear
+                    </button>
+                </p>
+            }
+            else
+            {
+                <p class="text-muted" id="override-none">No override set for this period.</p>
+            }
+
+            <div class="input-group mt-3">
+                <input type="number" class="form-control" placeholder="Amount"
+                       @bind="_amount" id="override-amount-input" min="0.01" step="0.01" />
+                <input type="text" class="form-control" placeholder="USD"
+                       @bind="_currency" id="override-currency-input" style="max-width:5rem" />
+                <button class="btn btn-outline-success" @onclick="SetOverrideAsync"
+                        id="set-override-btn">
+                    Set
+                </button>
+            </div>
+            @if (_error is not null)
+            {
+                <div class="text-danger mt-1" id="override-error">@_error</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private string _lookupId = string.Empty;
+    private bool _found;
+    private UserBudgetOverride? _override;
+    private decimal _amount;
+    private string _currency = "USD";
+    private string? _error;
+    private BudgetPeriod _currentPeriod = BudgetPeriod.FromDate(DateTimeOffset.UtcNow);
+
+    private async Task LookupAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_lookupId)) return;
+        _override = await AdminService.GetUserOverrideAsync(_lookupId.Trim(), _currentPeriod);
+        _found = true;
+    }
+
+    private async Task SetOverrideAsync()
+    {
+        _error = null;
+        if (_amount <= 0m)
+        {
+            _error = "Amount must be greater than zero.";
+            return;
+        }
+        try
+        {
+            await AdminService.SetUserOverrideAsync(_lookupId.Trim(), _amount, _currency, _currentPeriod);
+            _override = await AdminService.GetUserOverrideAsync(_lookupId.Trim(), _currentPeriod);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task ClearOverrideAsync()
+    {
+        await AdminService.ClearUserOverrideAsync(_lookupId.Trim(), _currentPeriod);
+        _override = null;
+    }
+}

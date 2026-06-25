@@ -1,0 +1,131 @@
+@page "/Admin/Groups"
+@attribute [Authorize(Policy = AppRoles.AdminPolicy)]
+@inject IGroupAdminService AdminService
+@using LLMCostControl.Admin.App.Services
+@using LLMCostControl.Domain.Budgets
+@using LLMCostControl.Domain.Common
+
+<PageTitle>Groups Admin</PageTitle>
+
+<h1 id="groups-heading">Groups</h1>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert" id="error-banner">@_error</div>
+}
+
+<!-- Create group form -->
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Create Group</h5>
+        <div class="input-group">
+            <input type="text" class="form-control" placeholder="Group name"
+                   @bind="_createName" id="new-group-name" />
+            <button class="btn btn-primary" @onclick="CreateGroupAsync" id="create-group-btn">
+                Create
+            </button>
+        </div>
+        @if (_createError is not null)
+        {
+            <div class="text-danger mt-1" id="create-group-error">@_createError</div>
+        }
+    </div>
+</div>
+
+<!-- Groups table -->
+<table class="table table-bordered" id="groups-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var group in _groups)
+        {
+            <tr id="group-row-@group.Id">
+                <td>@group.Name</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary me-1"
+                            @onclick="() => ToggleExpand(group.Id)"
+                            id="manage-btn-@group.Id">
+                        @(_expandedGroupId == group.Id ? "Close" : "Manage")
+                    </button>
+                    <button class="btn btn-sm btn-danger"
+                            @onclick="() => DeleteGroupAsync(group.Id)"
+                            id="delete-btn-@group.Id">
+                        Delete
+                    </button>
+                </td>
+            </tr>
+            @if (_expandedGroupId == group.Id)
+            {
+                <tr id="group-detail-@group.Id">
+                    <td colspan="2">
+                        <GroupDetailPanel GroupId="group.Id" Service="AdminService"
+                                         OnChanged="ReloadGroupsAsync" />
+                    </td>
+                </tr>
+            }
+        }
+    </tbody>
+</table>
+
+@code {
+    private IReadOnlyList<Group> _groups = [];
+    private string _createName = string.Empty;
+    private string? _createError;
+    private string? _error;
+    private Guid? _expandedGroupId;
+
+    protected override async Task OnInitializedAsync() => await ReloadGroupsAsync();
+
+    private async Task ReloadGroupsAsync()
+    {
+        try
+        {
+            _groups = await AdminService.GetGroupsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task CreateGroupAsync()
+    {
+        _createError = null;
+        if (string.IsNullOrWhiteSpace(_createName))
+        {
+            _createError = "Group name is required.";
+            return;
+        }
+        try
+        {
+            await AdminService.CreateGroupAsync(_createName.Trim());
+            _createName = string.Empty;
+            await ReloadGroupsAsync();
+        }
+        catch (ArgumentException ex)
+        {
+            _createError = ex.Message;
+        }
+    }
+
+    private void ToggleExpand(Guid groupId)
+        => _expandedGroupId = _expandedGroupId == groupId ? null : groupId;
+
+    private async Task DeleteGroupAsync(Guid groupId)
+    {
+        try
+        {
+            await AdminService.DeleteGroupAsync(groupId);
+            if (_expandedGroupId == groupId) _expandedGroupId = null;
+            await ReloadGroupsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

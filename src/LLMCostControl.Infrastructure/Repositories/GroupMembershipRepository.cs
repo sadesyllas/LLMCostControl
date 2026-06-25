@@ -22,6 +22,12 @@ public class GroupMembershipRepository
             .Select(m => m.GroupId)
             .ToListAsync(ct);
 
+    /// <summary>Returns all memberships for the given group.</summary>
+    public Task<List<GroupMembership>> GetMembershipsForGroupAsync(Guid groupId, CancellationToken ct = default)
+        => _db.GroupMemberships
+            .Where(m => m.GroupId == groupId)
+            .ToListAsync(ct);
+
     /// <summary>Adds a membership and saves.</summary>
     public async Task AddAsync(GroupMembership membership, CancellationToken ct = default)
     {

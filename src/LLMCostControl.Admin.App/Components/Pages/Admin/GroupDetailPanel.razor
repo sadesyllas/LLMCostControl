@@ -1,0 +1,185 @@
+@using LLMCostControl.Admin.App.Services
+@using LLMCostControl.Domain.Budgets
+@using LLMCostControl.Domain.Common
+
+<div class="row">
+
+    <!-- Rename -->
+    <div class="col-md-4">
+        <h6>Rename</h6>
+        <div class="input-group mb-2">
+            <input type="text" class="form-control" @bind="_renameName" id="rename-input-@GroupId" />
+            <button class="btn btn-outline-primary" @onclick="RenameAsync" id="rename-btn-@GroupId">
+                Rename
+            </button>
+        </div>
+        @if (_renameError is not null)
+        {
+            <div class="text-danger" id="rename-error-@GroupId">@_renameError</div>
+        }
+    </div>
+
+    <!-- Budget -->
+    <div class="col-md-4">
+        <h6>Budget (@_currentPeriod.Year-@_currentPeriod.Month.ToString("D2"))</h6>
+        @if (_budget is not null)
+        {
+            <div class="mb-1" id="budget-display-@GroupId">
+                @_budget.Amount.Amount @_budget.Amount.Currency
+                <button class="btn btn-sm btn-outline-danger ms-2"
+                        @onclick="ClearBudgetAsync" id="clear-budget-btn-@GroupId">
+                    Clear
+                </button>
+            </div>
+        }
+        <div class="input-group mb-2">
+            <input type="number" class="form-control" placeholder="Amount" @bind="_budgetAmount"
+                   id="budget-amount-@GroupId" min="0.01" step="0.01" />
+            <input type="text" class="form-control" placeholder="USD" @bind="_budgetCurrency"
+                   id="budget-currency-@GroupId" style="max-width:5rem" />
+            <button class="btn btn-outline-success" @onclick="SetBudgetAsync"
+                    id="set-budget-btn-@GroupId">
+                Set
+            </button>
+        </div>
+        @if (_budgetError is not null)
+        {
+            <div class="text-danger" id="budget-error-@GroupId">@_budgetError</div>
+        }
+    </div>
+
+    <!-- Members -->
+    <div class="col-md-4">
+        <h6>Members</h6>
+        @if (_members.Count == 0)
+        {
+            <em class="text-muted">No members.</em>
+        }
+        else
+        {
+            <ul class="list-unstyled" id="members-list-@GroupId">
+                @foreach (var m in _members)
+                {
+                    <li class="d-flex justify-content-between align-items-center mb-1">
+                        <span>@m.CallerId.Value</span>
+                        <button class="btn btn-sm btn-outline-danger"
+                                @onclick="() => RemoveMemberAsync(m.CallerId.Value)"
+                                id="remove-btn-@GroupId-@m.CallerId.Value">
+                            Remove
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+        <div class="input-group mt-2">
+            <input type="text" class="form-control" placeholder="caller@example.com"
+                   @bind="_newMember" id="member-input-@GroupId" />
+            <button class="btn btn-outline-primary" @onclick="AddMemberAsync"
+                    id="add-member-btn-@GroupId">
+                Add
+            </button>
+        </div>
+        @if (_memberError is not null)
+        {
+            <div class="text-danger" id="member-error-@GroupId">@_memberError</div>
+        }
+    </div>
+
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid GroupId { get; set; }
+    [Parameter, EditorRequired] public IGroupAdminService Service { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private IReadOnlyList<GroupMembership> _members = [];
+    private GroupBudget? _budget;
+    private BudgetPeriod _currentPeriod = BudgetPeriod.FromDate(DateTimeOffset.UtcNow);
+
+    private string _renameName = string.Empty;
+    private string? _renameError;
+
+    private decimal _budgetAmount;
+    private string _budgetCurrency = "USD";
+    private string? _budgetError;
+
+    private string _newMember = string.Empty;
+    private string? _memberError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _members = await Service.GetGroupMembersAsync(GroupId);
+        _budget = await Service.GetGroupBudgetAsync(GroupId, _currentPeriod);
+    }
+
+    private async Task RenameAsync()
+    {
+        _renameError = null;
+        if (string.IsNullOrWhiteSpace(_renameName))
+        {
+            _renameError = "Name is required.";
+            return;
+        }
+        try
+        {
+            await Service.RenameGroupAsync(GroupId, _renameName.Trim());
+            _renameName = string.Empty;
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _renameError = ex.Message;
+        }
+    }
+
+    private async Task SetBudgetAsync()
+    {
+        _budgetError = null;
+        if (_budgetAmount <= 0m)
+        {
+            _budgetError = "Amount must be greater than zero.";
+            return;
+        }
+        try
+        {
+            await Service.SetGroupBudgetAsync(GroupId, _budgetAmount, _budgetCurrency, _currentPeriod);
+            _budget = await Service.GetGroupBudgetAsync(GroupId, _currentPeriod);
+        }
+        catch (Exception ex)
+        {
+            _budgetError = ex.Message;
+        }
+    }
+
+    private async Task ClearBudgetAsync()
+    {
+        await Service.ClearGroupBudgetAsync(GroupId, _currentPeriod);
+        _budget = null;
+    }
+
+    private async Task AddMemberAsync()
+    {
+        _memberError = null;
+        if (string.IsNullOrWhiteSpace(_newMember))
+        {
+            _memberError = "Caller id is required.";
+            return;
+        }
+        try
+        {
+            await Service.AddMemberAsync(GroupId, _newMember.Trim());
+            _members = await Service.GetGroupMembersAsync(GroupId);
+            _newMember = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _memberError = ex.Message;
+        }
+    }
+
+    private async Task RemoveMemberAsync(string callerId)
+    {
+        await Service.RemoveMemberAsync(GroupId, callerId);
+        _members = await Service.GetGroupMembersAsync(GroupId);
+    }
+}

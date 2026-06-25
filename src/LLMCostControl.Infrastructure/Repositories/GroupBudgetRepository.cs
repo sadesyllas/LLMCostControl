@@ -34,6 +34,14 @@ public class GroupBudgetRepository
             .Where(b => groupIds.Contains(b.GroupId) && b.Period == period)
             .ToListAsync(ct);
 
+    /// <summary>Deletes the budget for a group and period, if it exists.</summary>
+    public async Task DeleteAsync(Guid groupId, BudgetPeriod period, CancellationToken ct = default)
+    {
+        await _db.GroupBudgets
+            .Where(b => b.GroupId == groupId && b.Period == period)
+            .ExecuteDeleteAsync(ct);
+    }
+
     /// <summary>Adds or replaces a group budget and saves.</summary>
     public async Task UpsertAsync(GroupBudget budget, CancellationToken ct = default)
     {

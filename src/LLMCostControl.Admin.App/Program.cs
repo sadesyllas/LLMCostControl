@@ -1,9 +1,13 @@
 using LLMCostControl.Admin.App.Auth;
 using LLMCostControl.Admin.App.Components;
+using LLMCostControl.Admin.App.Services;
+using LLMCostControl.Infrastructure.Data;
+using LLMCostControl.Infrastructure.Repositories;
 using LLMCostControl.Observability;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,6 +53,19 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AppRoles.ReadOnlyPolicy, policy =>
         policy.RequireRole(AppRoles.Admin, AppRoles.ReadOnly));
 });
+
+// Postgres via shared repositories (§12.1, M17).
+var dbConnStr = builder.Configuration["Database:ConnectionString"];
+if (!string.IsNullOrWhiteSpace(dbConnStr))
+{
+    builder.Services.AddDbContext<CostTrackerDbContext>(opts =>
+        opts.UseNpgsql(dbConnStr));
+    builder.Services.AddScoped<GroupRepository>();
+    builder.Services.AddScoped<GroupMembershipRepository>();
+    builder.Services.AddScoped<GroupBudgetRepository>();
+    builder.Services.AddScoped<UserBudgetOverrideRepository>();
+    builder.Services.AddScoped<IGroupAdminService, GroupAdminService>();
+}
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
