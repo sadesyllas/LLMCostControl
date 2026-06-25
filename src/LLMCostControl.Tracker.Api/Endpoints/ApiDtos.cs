@@ -100,6 +100,31 @@ public sealed class MoneyDto
 }
 
 /// <summary>
+/// Response body for a successful <c>POST /api/pricing/import</c> (§8.3).
+/// </summary>
+public sealed class PricingImportResponse
+{
+    /// <summary>Number of model pricing entries imported.</summary>
+    public int ImportedModelCount { get; init; }
+
+    /// <summary>The provider names whose pricing was replaced.</summary>
+    public IReadOnlyList<string> AffectedProviders { get; init; } = [];
+}
+
+/// <summary>
+/// Error response body for a rejected pricing file import (§8.3), carrying the
+/// validator's errors. When present, nothing was written (no partial import).
+/// </summary>
+public sealed class PricingImportErrorResponse
+{
+    /// <summary>The error type.</summary>
+    public string Error { get; init; } = string.Empty;
+
+    /// <summary>The validation errors that caused the rejection.</summary>
+    public IReadOnlyList<string> Errors { get; init; } = [];
+}
+
+/// <summary>
 /// Error response body for API errors.
 /// </summary>
 public sealed class ErrorResponse

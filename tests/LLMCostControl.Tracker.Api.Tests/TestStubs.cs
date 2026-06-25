@@ -13,6 +13,32 @@ public sealed class StubPricingStore : IPricingStore
 
     public void SetPricing(string model, ModelPricing pricing) => _pricing[model] = pricing;
 
+    /// <summary>Number of pricing entries currently stored.</summary>
+    public int Count => _pricing.Count;
+
+    /// <summary>Removes all stored pricing.</summary>
+    public void Clear() => _pricing.Clear();
+
+    /// <summary>
+    /// Replaces all pricing for a provider with the given entries — the in-memory
+    /// analog of the DB writer's <c>ReplaceProviderPricingAsync</c>.
+    /// </summary>
+    public void ReplaceProvider(Provider provider, IReadOnlyCollection<ModelPricing> entries)
+    {
+        foreach (var model in _pricing
+            .Where(kvp => kvp.Value.Provider == provider)
+            .Select(kvp => kvp.Key)
+            .ToList())
+        {
+            _pricing.Remove(model);
+        }
+
+        foreach (var entry in entries)
+        {
+            _pricing[entry.Model] = entry;
+        }
+    }
+
     public Task<ModelPricing?> GetByModelAsync(string model, CancellationToken ct = default)
     {
         _pricing.TryGetValue(model, out var pricing);

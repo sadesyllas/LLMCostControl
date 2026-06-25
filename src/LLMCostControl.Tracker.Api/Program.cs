@@ -31,6 +31,8 @@ builder.Services.AddScoped<IPricingStore, PricingStore>();
 builder.Services.AddScoped<IBudgetStore, BudgetStore>();
 builder.Services.AddScoped<IUsageEventStore, UsageEventStore>();
 builder.Services.AddSingleton<IPricingCache, PricingCache>();
+builder.Services.AddSingleton<IPricingWriter, DbPricingWriter>();
+builder.Services.AddSingleton<PricingImportService>();
 builder.Services.Configure<BudgetGrainOptions>(builder.Configuration.GetSection("BudgetGrain"));
 builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BudgetGrainOptions>>().Value);
 builder.Services.AddSingleton(TimeProvider.System);
@@ -179,5 +181,35 @@ app.MapPost("/api/usage/capture", async (
         return Results.BadRequest(new ErrorResponse { Error = "unknown_model", Detail = ex.Message });
     }
 }).RequireAuthorization();
+
+// M14: Localhost-only pricing file import endpoint (§8.3). Bound to loopback
+// callers via LocalhostOnlyEndpointFilter; feeds the uploaded file through the
+// shared validator (M5) and the refresh job's write path (M7). No gateway token
+// is required — localhost binding is the trust boundary.
+app.MapPost("/api/pricing/import", async (
+    HttpContext httpContext,
+    PricingImportService importService,
+    CancellationToken ct) =>
+{
+    using var reader = new StreamReader(httpContext.Request.Body);
+    var content = await reader.ReadToEndAsync(ct);
+
+    var result = await importService.ImportAsync(content, ct);
+
+    if (!result.Success)
+    {
+        return Results.BadRequest(new PricingImportErrorResponse
+        {
+            Error = "invalid_pricing_file",
+            Errors = result.Errors,
+        });
+    }
+
+    return Results.Ok(new PricingImportResponse
+    {
+        ImportedModelCount = result.ImportedModelCount,
+        AffectedProviders = result.AffectedProviders.Select(p => p.ToString()).ToList(),
+    });
+}).AddEndpointFilter(new LocalhostOnlyEndpointFilter());
 
 app.Run();
