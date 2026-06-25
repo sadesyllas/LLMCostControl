@@ -1,0 +1,133 @@
+### LLM Cost Control Tracker API — manual probe file (M19, §14.3)
+### Usage: open in VS Code with the REST Client extension, or run with `curl`.
+### Before running: obtain a valid gateway JWT (configure GatewayAuth in appsettings).
+
+@baseUrl = http://localhost:5000
+@token = REPLACE_WITH_VALID_JWT
+
+###
+
+### 1. Health check (no auth)
+GET {{baseUrl}}/
+Accept: application/json
+
+###
+
+### 2. Budget check — allowed caller (must have a budget set via admin app)
+POST {{baseUrl}}/api/budget/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "alice@example.com",
+  "model": "gpt-4o"
+}
+
+###
+
+### 3. Budget check — caller with no budget (fail-closed by default)
+POST {{baseUrl}}/api/budget/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "unknown@example.com"
+}
+
+###
+
+### 4. Usage capture — successful accrual
+POST {{baseUrl}}/api/usage/capture
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "alice@example.com",
+  "model": "gpt-4o",
+  "tokens": {
+    "input": 1000,
+    "output": 500,
+    "cacheRead": 200,
+    "cacheWrite": 0
+  },
+  "requestId": "manual-test-001"
+}
+
+###
+
+### 5. Usage capture — idempotency (same requestId, should not double-accrue)
+POST {{baseUrl}}/api/usage/capture
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "alice@example.com",
+  "model": "gpt-4o",
+  "tokens": {
+    "input": 1000,
+    "output": 500,
+    "cacheRead": 200,
+    "cacheWrite": 0
+  },
+  "requestId": "manual-test-001"
+}
+
+###
+
+### 6. Usage capture — unknown model (should return 400 unknown_model)
+POST {{baseUrl}}/api/usage/capture
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "alice@example.com",
+  "model": "nonexistent-model-xyz",
+  "tokens": {
+    "input": 100,
+    "output": 50,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  }
+}
+
+###
+
+### 7. Localhost pricing file import (no auth — localhost only)
+POST {{baseUrl}}/api/pricing/import
+Content-Type: application/json
+
+{
+  "generatedAt": "2026-06-25T12:00:00Z",
+  "currency": "USD",
+  "unit": "per-1M-tokens",
+  "providers": [
+    {
+      "provider": "openai",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "fetchedAt": "2026-06-25T12:00:00Z",
+          "prices": {
+            "input": 2.50,
+            "output": 10.00,
+            "cacheRead": 1.25,
+            "cacheWrite": null
+          }
+        }
+      ]
+    }
+  ]
+}
+
+###
+
+### 8. Pricing import — invalid file (should return 422 with errors)
+POST {{baseUrl}}/api/pricing/import
+Content-Type: application/json
+
+{
+  "generatedAt": "2026-06-25T12:00:00Z",
+  "currency": "USD",
+  "unit": "per-1M-tokens",
+  "providers": []
+}
