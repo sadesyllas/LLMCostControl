@@ -1,5 +1,6 @@
 using LLMCostControl.Admin.App.Auth;
 using LLMCostControl.Admin.App.Components;
+using LLMCostControl.Admin.App.Services;
 using LLMCostControl.Infrastructure.Data;
 using LLMCostControl.Observability;
 using Microsoft.AspNetCore.Authentication;
@@ -25,6 +26,8 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddDbContextFactory<CostTrackerDbContext>(options =>
         options.UseNpgsql(connectionString));
 }
+
+builder.Services.AddScoped<IAdminCommandService, AdminCommandService>();
 
 // EntraID (Azure AD) OIDC authentication (§12.2).
 var authOptions = builder.Configuration.GetSection("EntraId").Get<AdminAuthOptions>() ?? new();

@@ -1,0 +1,143 @@
+@page "/groups"
+@attribute [Authorize(Roles = AppRoles.Admin)]
+@inject IAdminCommandService Admin
+@inject NavigationManager Navigation
+
+<PageTitle>Groups</PageTitle>
+
+<h1>Groups</h1>
+
+<div class="mb-3">
+    <label class="form-label" for="groupName">New group name</label>
+    <div class="input-group">
+        <input id="groupName" class="form-control" @bind="_newGroupName" placeholder="e.g. Engineering" />
+        <button class="btn btn-primary" @onclick="CreateGroup">Create</button>
+    </div>
+    @if (_createError is not null)
+    {
+        <div class="text-danger mt-1">@_createError</div>
+    }
+</div>
+
+@if (_groups is null)
+{
+    <p>Loading...</p>
+}
+else if (_groups.Count == 0)
+{
+    <p class="text-muted">No groups yet. Create one above.</p>
+}
+else
+{
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var group in _groups)
+            {
+                <tr>
+                    <td>
+                        @if (_editingId == group.Id)
+                        {
+                            <input class="form-control form-control-sm" @bind="_editingName" />
+                        }
+                        else
+                        {
+                            <a href="/groups/@group.Id">@group.Name</a>
+                        }
+                    </td>
+                    <td>@group.CreatedAt.ToString("yyyy-MM-dd")</td>
+                    <td>
+                        @if (_editingId == group.Id)
+                        {
+                            <button class="btn btn-sm btn-success me-1" @onclick="() => SaveRename(group.Id)">Save</button>
+                            <button class="btn btn-sm btn-secondary" @onclick="CancelRename">Cancel</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => StartRename(group)">Rename</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteGroup(group.Id)">Delete</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Group>? _groups;
+    private string _newGroupName = string.Empty;
+    private string? _createError;
+    private Guid? _editingId;
+    private string _editingName = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGroups();
+    }
+
+    private async Task LoadGroups()
+    {
+        _groups = await Admin.ListGroupsAsync();
+    }
+
+    private async Task CreateGroup()
+    {
+        if (string.IsNullOrWhiteSpace(_newGroupName))
+        {
+            _createError = "Group name is required.";
+            return;
+        }
+
+        try
+        {
+            await Admin.CreateGroupAsync(_newGroupName);
+            _newGroupName = string.Empty;
+            _createError = null;
+            await LoadGroups();
+        }
+        catch (Exception ex)
+        {
+            _createError = ex.Message;
+        }
+    }
+
+    private void StartRename(Group group)
+    {
+        _editingId = group.Id;
+        _editingName = group.Name;
+    }
+
+    private void CancelRename()
+    {
+        _editingId = null;
+        _editingName = string.Empty;
+    }
+
+    private async Task SaveRename(Guid id)
+    {
+        if (string.IsNullOrWhiteSpace(_editingName))
+        {
+            _createError = "Group name is required.";
+            return;
+        }
+
+        await Admin.RenameGroupAsync(id, _editingName);
+        _editingId = null;
+        _editingName = string.Empty;
+        _createError = null;
+        await LoadGroups();
+    }
+
+    private async Task DeleteGroup(Guid id)
+    {
+        await Admin.DeleteGroupAsync(id);
+        await LoadGroups();
+    }
+}

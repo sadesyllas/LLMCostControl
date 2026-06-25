@@ -13,6 +13,9 @@
     <PackageReference Include="bunit" />
     <PackageReference Include="bunit.web" />
     <PackageReference Include="bunit.core" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
 
   <ItemGroup>
