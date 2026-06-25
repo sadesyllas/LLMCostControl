@@ -1,0 +1,11 @@
+@inject NavigationManager Navigation
+
+@code {
+    // Sends an unauthenticated visitor to the OIDC sign-in endpoint (§12.2),
+    // preserving where they were trying to go via returnUrl.
+    protected override void OnInitialized()
+    {
+        var returnUrl = Uri.EscapeDataString(Navigation.ToBaseRelativePath(Navigation.Uri));
+        Navigation.NavigateTo($"authentication/login?returnUrl={returnUrl}", forceLoad: true);
+    }
+}

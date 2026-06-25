@@ -1,7 +1,14 @@
-﻿@page "/"
+@page "/"
+@attribute [Authorize]
 
 <PageTitle>Home</PageTitle>
 
 <h1>LLMCostControl Admin</h1>
 
-Welcome to the LLM Cost Tracker admin center.
+<AuthorizeView>
+    <Authorized>
+        <p>Signed in as <strong>@context.User.Identity?.Name</strong>.</p>
+    </Authorized>
+</AuthorizeView>
+
+<p>Welcome to the LLM Cost Tracker admin center.</p>

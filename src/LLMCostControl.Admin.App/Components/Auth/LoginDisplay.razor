@@ -1,0 +1,13 @@
+@* Shows the signed-in user and a sign-out control, or a sign-in link (§12.2). *@
+<AuthorizeView>
+    <Authorized>
+        <span class="me-2">@context.User.Identity?.Name</span>
+        <form action="authentication/logout" method="post" class="d-inline">
+            <AntiforgeryToken />
+            <button type="submit" class="btn btn-link p-0">Sign out</button>
+        </form>
+    </Authorized>
+    <NotAuthorized>
+        <a href="authentication/login">Sign in</a>
+    </NotAuthorized>
+</AuthorizeView>
