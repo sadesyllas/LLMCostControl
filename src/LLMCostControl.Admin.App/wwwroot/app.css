@@ -58,3 +58,135 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* Premium Admin Console Styles */
+.admin-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+}
+
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    padding-bottom: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.admin-header h1 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: #1a1a1a;
+    margin: 0;
+}
+
+.admin-header .subtitle {
+    margin-top: 0.25rem;
+    color: #666;
+    font-size: 0.95rem;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.user-badge {
+    display: inline-flex;
+    align-items: center;
+    background-color: #fff;
+    padding: 0.5rem 0.85rem;
+    border-radius: 50px;
+    border: 1px solid #e5e7eb;
+    font-size: 0.9rem;
+    gap: 0.5rem;
+}
+
+.user-avatar {
+    font-style: normal;
+}
+
+.user-name {
+    font-weight: 500;
+    color: #374151;
+}
+
+.role-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+}
+
+.role-admin {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.role-readonly {
+    background-color: #f3f4f6;
+    color: #374151;
+}
+
+.btn-signout {
+    border-radius: 50px;
+    padding: 0.5rem 1.25rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.welcome-card {
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-left: 4px solid #3b82f6;
+}
+
+.action-card {
+    border-radius: 16px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    padding: 1.5rem;
+}
+
+.action-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.admin-border {
+    border-top: 4px solid #3b82f6 !important;
+}
+
+.locked-card {
+    background-color: #f9fafb;
+    border: 2px dashed #e5e7eb;
+}
+
+.card-icon {
+    font-size: 2.25rem;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+}
+
+.icon-primary {
+    background-color: #eff6ff;
+    color: #1d4ed8;
+}
+
+.icon-secondary {
+    background-color: #f5f3ff;
+    color: #6d28d9;
+}
+
+.icon-muted {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+}

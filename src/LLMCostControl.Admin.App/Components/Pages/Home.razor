@@ -1,7 +1,103 @@
-﻿@page "/"
+@page "/"
+@attribute [Authorize]
 
-<PageTitle>Home</PageTitle>
+<PageTitle>LLM Cost Control Admin Center</PageTitle>
 
-<h1>LLMCostControl Admin</h1>
+<AuthorizeView>
+    <Authorized>
+        <div class="admin-container">
+            <header class="admin-header">
+                <div>
+                    <h1>LLM Cost Control</h1>
+                    <p class="subtitle">Admin Center & Telemetry Control</p>
+                </div>
+                <div class="user-profile">
+                    <span class="user-badge shadow-sm">
+                        <i class="user-avatar">👤</i>
+                        <span class="user-name">@context.User.Identity?.Name</span>
+                        <span class="role-badge @(context.User.IsInRole("CostTracker.Admin") ? "role-admin" : "role-readonly")">
+                            @(context.User.IsInRole("CostTracker.Admin") ? "Administrator" : "Read-Only")
+                        </span>
+                    </span>
+                    <a href="MicrosoftIdentity/Account/SignOut" class="btn btn-outline-danger btn-signout">Sign Out</a>
+                </div>
+            </header>
 
-Welcome to the LLM Cost Tracker admin center.
+            <main class="admin-main">
+                <section class="overview-section">
+                    <div class="welcome-card card shadow-sm mb-4">
+                        <div class="card-body">
+                            <h2 class="h4 card-title mb-2">Welcome to the Administration Console</h2>
+                            <p class="card-text text-muted">
+                                This dashboard allows you to manage caller groups, monthly budgets, per-user overrides, and monitor LLM token pricing models. 
+                                Telemetry signals configured in the Tracker API are automatically tagged with the budgets you administer here.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="card h-100 shadow-sm border-0 action-card" id="readonly-actions">
+                            <div class="card-body d-flex flex-column">
+                                <div class="card-icon icon-secondary mb-3">📊</div>
+                                <h2 class="h5 card-title">General Views</h2>
+                                <p class="card-text text-muted flex-grow-1">
+                                    Browse active pricing models, track effective budget utilization, and inspect recent usage events from the PostgreSQL audit ledger.
+                                </p>
+                                <div class="action-buttons mt-3 gap-2 d-flex">
+                                    <button class="btn btn-outline-secondary w-100 py-2">View Budgets</button>
+                                    <button class="btn btn-outline-secondary w-100 py-2">View Pricing</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <AuthorizeView Roles="CostTracker.Admin" Context="adminContext">
+                        <Authorized>
+                            <div class="col-md-6">
+                                <div class="card h-100 shadow-sm border-0 action-card admin-border" id="admin-actions">
+                                    <div class="card-body d-flex flex-column">
+                                        <div class="card-icon icon-primary mb-3">⚙️</div>
+                                        <h2 class="h5 card-title">Administrative Controls</h2>
+                                        <p class="card-text text-muted flex-grow-1">
+                                            Create and manage caller groups, set or update group budgets, modify memberships, and register custom user overrides.
+                                        </p>
+                                        <div class="action-buttons mt-3 gap-2 d-flex">
+                                            <button class="btn btn-primary w-100 py-2">Manage Groups</button>
+                                            <button class="btn btn-primary w-100 py-2">Configure Overrides</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </Authorized>
+                        <NotAuthorized>
+                            <div class="col-md-6">
+                                <div class="card h-100 shadow-sm border-0 action-card locked-card">
+                                    <div class="card-body d-flex flex-column justify-content-center align-items-center text-center">
+                                        <div class="card-icon icon-muted mb-3">🔒</div>
+                                        <h2 class="h5 card-title text-muted">Administrative Controls Locked</h2>
+                                        <p class="card-text text-muted small">
+                                            You are signed in as a Read-Only user. Write actions, group creation, and budget overrides require the <code>CostTracker.Admin</code> role.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                </div>
+            </main>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="d-flex align-items-center justify-content-center min-vh-100 bg-light">
+            <div class="text-center p-5 card shadow-lg border-0" style="max-width: 450px;">
+                <div class="spinner-border text-primary mb-4" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h1 class="h4 mb-2">Redirecting...</h1>
+                <p class="text-muted">You are not authenticated. Please wait while we redirect you to Microsoft Entra ID for secure sign-in.</p>
+            </div>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>

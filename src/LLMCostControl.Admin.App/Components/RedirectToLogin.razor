@@ -1,0 +1,11 @@
+@inject NavigationManager Navigation
+
+@code {
+    /// <summary>
+    /// Redirects the user to the standard Microsoft Identity login flow on initialization.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        Navigation.NavigateTo("MicrosoftIdentity/Account/SignIn", forceLoad: true);
+    }
+}
