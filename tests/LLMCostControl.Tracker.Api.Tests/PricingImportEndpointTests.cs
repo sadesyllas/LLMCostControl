@@ -269,7 +269,7 @@ public sealed class PricingImportApiFactory : WebApplicationFactory<Program>
 /// from the <c>X-Test-Remote-IP</c> header, enabling non-localhost simulation in
 /// tests.
 /// </summary>
-file sealed class TestRemoteIpStartupFilter : IStartupFilter
+internal sealed class TestRemoteIpStartupFilter : IStartupFilter
 {
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
     {

@@ -1,0 +1,164 @@
+### LLM Cost Control Tracker API — sample requests
+### §14.3 developer workflow: manual probing with curl / .http client
+###
+### Prerequisites:
+### 1. docker compose up -d
+### 2. F5 the Tracker.Api project (connects to compose Postgres + telemetry)
+### 3. Obtain a valid gateway JWT (see test helper or stub OIDC provider)
+###    For local dev with auth disabled, set GatewayAuth:IsEnabled=false in
+###    appsettings.Development.json
+
+### ── Budget check (§6.2.1) ──
+
+### Check if a caller is allowed (happy path)
+POST {{baseUrl}}/api/budget/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "user@example.com",
+  "model": "gpt-4o"
+}
+
+### Check for an unbudgeted caller (denied)
+POST {{baseUrl}}/api/budget/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "unbudgeted@example.com"
+}
+
+### Check with missing callerId (400 invalid_request)
+POST {{baseUrl}}/api/budget/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+}
+
+### Check without auth (401 unauthorized)
+POST {{baseUrl}}/api/budget/check
+Content-Type: application/json
+
+{
+  "callerId": "user@example.com"
+}
+
+### ── Usage capture (§6.2.2) ──
+
+### Capture a usage event (happy path)
+POST {{baseUrl}}/api/usage/capture
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "user@example.com",
+  "model": "gpt-4o",
+  "tokens": {
+    "input": 1000,
+    "output": 500,
+    "cacheRead": 200,
+    "cacheWrite": 0
+  },
+  "requestId": "req-001"
+}
+
+### Capture with unknown model (400 unknown_model)
+POST {{baseUrl}}/api/usage/capture
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "user@example.com",
+  "model": "nonexistent",
+  "tokens": {
+    "input": 1000,
+    "output": 500,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  }
+}
+
+### Capture with idempotent requestId (duplicate — no double accrual)
+POST {{baseUrl}}/api/usage/capture
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "user@example.com",
+  "model": "gpt-4o",
+  "tokens": {
+    "input": 1000,
+    "output": 500,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "requestId": "req-001"
+}
+
+### ── Pricing file import (§8.3, localhost only) ──
+
+### Import a valid pricing file
+POST {{baseUrl}}/api/pricing/import
+Content-Type: application/json
+
+{
+  "generatedAt": "2026-06-25T12:00:00Z",
+  "currency": "USD",
+  "unit": "per-1M-tokens",
+  "providers": [
+    {
+      "provider": "openai",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "fetchedAt": "2026-06-25T12:00:00Z",
+          "prices": {
+            "input": 2.50,
+            "output": 10.00,
+            "cacheRead": 1.25,
+            "cacheWrite": null
+          }
+        }
+      ]
+    }
+  ]
+}
+
+### Import an invalid pricing file (negative price — 400 invalid_file)
+POST {{baseUrl}}/api/pricing/import
+Content-Type: application/json
+
+{
+  "generatedAt": "2026-06-25T12:00:00Z",
+  "currency": "USD",
+  "unit": "per-1M-tokens",
+  "providers": [
+    {
+      "provider": "openai",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "fetchedAt": "2026-06-25T12:00:00Z",
+          "prices": {
+            "input": -1.0,
+            "output": 10.00,
+            "cacheRead": 1.25
+          }
+        }
+      ]
+    }
+  ]
+}
+
+### ── Auth test endpoint (§6.1, M12) ──
+
+### Verify a valid gateway token
+GET {{baseUrl}}/api/auth/test
+Authorization: Bearer {{token}}
+
+### ── Variables ──
+
+@baseUrl = https://localhost:5001
+@token = your-jwt-token-here
