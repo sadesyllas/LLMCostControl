@@ -1,7 +1,7 @@
 # Context Snapshot
 
-Snapshot taken after completing milestone **M18**. This file is a quick-reference
-for resuming work on **M19** and beyond.
+Snapshot taken after completing milestone **M19** — the final milestone. **All
+19 milestones (M0–M19) are done and tested.**
 
 ## Project Status
 
@@ -26,14 +26,15 @@ for resuming work on **M19** and beyond.
 | M16 | Blazor admin app: scaffolding + EntraID auth | [x] | [x] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | [x] | [x] |
 | M18 | Admin app: read-only views + pricing file upload | [x] | [x] |
-| M19 | Contract/conformance tests + E2E local-dev verification | [ ] | [ ] |
+| M19 | Contract/conformance tests + E2E local-dev verification | [x] | [x] |
 
-**Next milestone: M19** — Contract/conformance tests + E2E local-dev verification
-(Spec ref §13.4, §14.3, depends on M13, M14, M15, M18).
+**All milestones complete.** Remaining work is operator sign-off of the manual
+§14.3 E2E walkthrough (`docs/E2E_CHECKLIST.md`) and any future-iteration items in
+SPEC §15.
 
 ## Test Counts (verified green)
 
-Total: **148 tests**, all passing (entire suite verified green in WSL, including
+Total: **153 tests**, all passing (entire suite verified green in WSL, including
 both Docker-gated Testcontainers suites).
 
 | Test project | Tests |
@@ -41,7 +42,7 @@ both Docker-gated Testcontainers suites).
 | LLMCostControl.Domain.Tests | 38 |
 | LLMCostControl.Infrastructure.Tests | 40 (Testcontainers) |
 | LLMCostControl.Grains.Tests | 24 |
-| LLMCostControl.Tracker.Api.Tests | 21 (6 auth + 7 endpoint + 3 import + 4 telemetry + 1 smoke) |
+| LLMCostControl.Tracker.Api.Tests | 26 (6 auth + 7 endpoint + 3 import + 4 telemetry + 5 contract + 1 smoke) |
 | LLMCostControl.Observability.Tests | 1 |
 | LLMCostControl.Admin.App.Tests | 24 (4 auth-gated + 1 OIDC + 6 admin CRUD bUnit + 6 CRUD Postgres + 2 reports bUnit + 2 upload bUnit + 2 query/import Postgres + 1 smoke) |
 
@@ -73,6 +74,8 @@ tests/
   LLMCostControl.Admin.App.Tests/
 docker/postgres/                    # init.sql, orleans-main.sql, orleans-persistence.sql
 docker-compose.yml                  # postgres, otel-collector, loki, tempo, prometheus, grafana, seq
+requests.http                       # M19: manual check/capture/import probing (§14.3)
+docs/E2E_CHECKLIST.md               # M19: manual §14.3 E2E sign-off checklist
 ```
 
 ## Toolchain
@@ -331,6 +334,8 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   `AddInMemoryExporter`) and an `InMemoryLogSink` (`ILogEventSink`)
 - `Tracker.Api.Tests/AssemblyInfo.cs` — `DisableTestParallelization = true`
   (in-memory OTel/Serilog capture is process-global; classes must not overlap)
+- `Tracker.Api.Tests/ContractTests.cs` — 5 M19 conformance tests pinning the raw
+  check/capture response JSON + error envelopes (reuses `TrackerApiFactory`)
 - `Tracker.Api.Tests/TestStubs.cs` — simpler stub stores for API integration
   (`StubPricingStore` now has `ReplaceProvider`/`Clear`/`Count` for import tests)
 - `Tracker.Api.Tests/SmokeTests.cs` — 1 smoke test
@@ -377,6 +382,9 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 ## Git History (recent)
 
 ```
+6705343 M19: mark milestone done and tested
+207762a M19: contract/conformance tests + E2E artifacts
+4b302a9 docs: update CONTEXT_SNAPSHOT.md after M18
 b6fab47 M18: mark milestone done and tested
 37df718 M18: admin read-only views + pricing file upload
 2d54118 docs: update CONTEXT_SNAPSHOT.md after M17
