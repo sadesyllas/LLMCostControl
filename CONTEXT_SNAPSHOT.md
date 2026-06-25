@@ -1,7 +1,7 @@
 # Context Snapshot
 
-Snapshot taken after completing milestone **M13**. This file is a quick-reference
-for resuming work on **M14** and beyond.
+Snapshot taken after completing milestone **M14**. This file is a quick-reference
+for resuming work on **M15** and beyond.
 
 ## Project Status
 
@@ -21,28 +21,33 @@ for resuming work on **M14** and beyond.
 | M11 | Cost accrual + usage audit trail | [x] | [x] |
 | M12 | Auth: OAuth/JWKS validation | [x] | [x] |
 | M13 | Tracker API: check + capture endpoints | [x] | [x] |
-| M14 | Localhost pricing file import endpoint | [ ] | [ ] |
+| M14 | Localhost pricing file import endpoint | [x] | [x] |
 | M15 | Effective-group telemetry tagging | [ ] | [ ] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | [ ] | [ ] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | [ ] | [ ] |
 | M18 | Admin app: read-only views + pricing file upload | [ ] | [ ] |
 | M19 | Contract/conformance tests + E2E local-dev verification | [ ] | [ ] |
 
-**Next milestone: M14** — Localhost pricing file import endpoint (Spec ref §8.3,
-depends on M5, M7).
+**Next milestone: M15** — Effective-group telemetry tagging (Spec ref §10.2,
+depends on M10, M11, M2).
 
 ## Test Counts (verified green)
 
-Total: **118 tests**, all passing.
+Total: **121 tests**, all passing.
 
 | Test project | Tests |
 |--------------|------:|
 | LLMCostControl.Domain.Tests | 38 |
 | LLMCostControl.Infrastructure.Tests | 40 |
 | LLMCostControl.Grains.Tests | 24 |
-| LLMCostControl.Tracker.Api.Tests | 14 (6 auth + 7 endpoint + 1 smoke) |
+| LLMCostControl.Tracker.Api.Tests | 17 (6 auth + 7 endpoint + 3 import + 1 smoke) |
 | LLMCostControl.Observability.Tests | 1 |
 | LLMCostControl.Admin.App.Tests | 1 |
+
+> **Note:** `LLMCostControl.Infrastructure.Tests` (40) use **Testcontainers**
+> Postgres and require a running Docker daemon. They cannot run in an
+> environment without Docker; the M14 tests deliberately use stubs and need no
+> Docker.
 
 ## Repository Layout
 
@@ -125,6 +130,20 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
     removed in OTel collector 0.154.0).
 15. **`Program.cs` is `public partial`** (required for `WebApplicationFactory<Program>`).
     Uses top-level statements with `app.Run()`.
+16. **M14 import reuses the M7 write path via an `IPricingWriter` seam** rather
+    than calling EF directly. `PricingImportService` validates the whole file
+    atomically first (M5 validator) — no partial import — then writes + publishes
+    per provider. The service lives in `Infrastructure` (not the API) so M18's
+    admin upload shares the exact code path (§12.3).
+17. **`PricingGrain` does NOT subscribe to the `pricing-updated` stream**
+    (StatelessWorker can't — see #2). So imported prices become visible to grains
+    via the store + 30 s cache TTL; the stream event is still published for the
+    contract / future consumers. M14 tests assert grain visibility by reading the
+    grain after import (same as M9), and assert publish via a recording publisher.
+18. **Localhost-only enforcement** is an `IEndpointFilter` checking
+    `Connection.RemoteIpAddress` (null or non-loopback → 404). Tests drive it over
+    the in-memory TestServer via an `IStartupFilter` that sets `RemoteIpAddress`
+    from an `X-Test-RemoteIp` header (the test server leaves it unset otherwise).
 
 ## Key Source Files
 
@@ -148,6 +167,12 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 - `Pricing/PricingRefreshJob.cs` (BackgroundService, singularity guard,
   per-provider cadence + jitter), `PricingRefreshOptions.cs`,
   `PricingUpdatedEvent.cs`, `IPricingUpdatePublisher.cs`
+- `Pricing/IPricingWriter.cs` / `DbPricingWriter.cs` — write seam over
+  `ModelPricingRepository.ReplaceProviderPricingAsync` (M7 write path), uses
+  `IDbContextFactory` (singleton-safe, like `PricingStore`)
+- `Pricing/PricingImportService.cs` (+ `PricingImportResult`) — M14/§8.3 shared
+  import pipeline: validate (M5) → write per provider (`IPricingWriter`) →
+  publish per provider. Lives in Infrastructure so M18's admin upload reuses it
 
 ### Grains (`src/LLMCostControl.Grains*/`)
 - `Abstractions/IUserBudgetGrain.cs`, `IPricingGrain.cs`
@@ -168,9 +193,14 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 
 ### Tracker API (`src/LLMCostControl.Tracker.Api/`)
 - `Program.cs` — Orleans silo config, JWT Bearer auth, `/api/budget/check`,
-  `/api/usage/capture`, `/api/auth/test`
+  `/api/usage/capture`, `/api/auth/test`, `/api/pricing/import` (M14, localhost
+  only, no gateway token); registers `IPricingWriter`→`DbPricingWriter` and
+  `PricingImportService`
 - `Auth/GatewayAuthOptions.cs` — JwksEndpoint, Issuer, Audience, IsEnabled
-- `Endpoints/ApiDtos.cs` — request/response DTOs for check + capture
+- `Endpoints/ApiDtos.cs` — request/response DTOs for check + capture + import
+  (`PricingImportResponse`, `PricingImportErrorResponse`)
+- `Endpoints/LocalhostOnlyEndpointFilter.cs` — `IEndpointFilter` returning 404
+  for non-loopback `Connection.RemoteIpAddress` (M14, §8.3)
 
 ### Observability (`src/LLMCostControl.Observability/`)
 - `ObservabilityExtensions.cs` — Serilog + OTel SDK wiring (logs→Loki,
@@ -193,7 +223,12 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   `AuthWebAppFactory`
 - `Tracker.Api.Tests/CheckCaptureEndpointTests.cs` — 7 endpoint tests +
   `TrackerApiFactory`
+- `Tracker.Api.Tests/PricingImportEndpointTests.cs` — 3 M14 tests
+  (valid→persist+publish+grain-visible, invalid→400+no-write, non-localhost→404)
+  + `PricingImportApiFactory`, `StubPricingWriter`, `RecordingPricingPublisher`,
+  `TestRemoteIpStartupFilter` (middleware setting `RemoteIpAddress` from a header)
 - `Tracker.Api.Tests/TestStubs.cs` — simpler stub stores for API integration
+  (`StubPricingStore` now has `ReplaceProvider`/`Clear`/`Count` for import tests)
 - `Tracker.Api.Tests/SmokeTests.cs` — 1 smoke test
 - `Infrastructure.Tests/RepositoryTestBase.cs` — Testcontainers Postgres
 - `Infrastructure.Tests/Stubs/StubPricingComponents.cs`
@@ -215,6 +250,9 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 ## Git History (recent)
 
 ```
+ebd9ee8 M14: mark milestone done and tested
+773bf0d M14: implement localhost pricing file import endpoint
+fea1c21 docs: add CONTEXT_SNAPSHOT.md after M13
 01172f4 M13: mark milestone done and tested
 2ebf893 M13: implement check + capture endpoints with auth, DTOs, error handling...
 ecc3e65 M12: mark milestone done and tested
