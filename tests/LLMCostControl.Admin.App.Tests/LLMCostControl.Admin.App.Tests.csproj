@@ -10,6 +10,13 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="bunit" />
+    <PackageReference Include="bunit.web" />
+    <PackageReference Include="bunit.core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LLMCostControl.Admin.App\LLMCostControl.Admin.App.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,7 +1,26 @@
 ﻿@page "/"
+@attribute [Authorize]
 
 <PageTitle>Home</PageTitle>
 
 <h1>LLMCostControl Admin</h1>
 
-Welcome to the LLM Cost Tracker admin center.
+<AuthorizeView>
+    <Authorized>
+        <p>Welcome, <strong>@context.User.Identity?.Name</strong>.</p>
+    </Authorized>
+</AuthorizeView>
+
+<AuthorizeView Roles="@AppRoles.Admin">
+    <Authorized>
+        <h2>Admin Commands</h2>
+        <p>You have full admin access. Group and budget management will be available here.</p>
+    </Authorized>
+</AuthorizeView>
+
+<AuthorizeView Roles="@AppRoles.ReadOnly">
+    <Authorized>
+        <h2>Read-Only Access</h2>
+        <p>You have read-only access. Admin commands are not available.</p>
+    </Authorized>
+</AuthorizeView>
