@@ -29,7 +29,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M16 | Blazor admin app: scaffolding + EntraID auth | §12.1, §12.2 | M4 | [x] | [x] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | §12.3 | M16, M4 | [x] | [x] |
 | M18 | Admin app: read-only views + pricing file upload | §12.3 | M17, M5 | [x] | [x] |
-| M19 | Contract/conformance tests + E2E local-dev verification | §13.4, §14.3 | M13, M14, M15, M18 | [ ] | [ ] |
+| M19 | Contract/conformance tests + E2E local-dev verification | §13.4, §14.3 | M13, M14, M15, M18 | [x] | [x] |
 
 ---
 
@@ -354,7 +354,10 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §13.4, §14.3
 - **Depends on:** M13, M14, M15, M18
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
+  - Contract suite (`ContractTests`) green; `requests.http` + `docs/E2E_CHECKLIST.md`
+    provided. The manual §14.3 E2E walkthrough is documented for operator sign-off
+    (requires IDE F5 + Grafana observation, performed manually).
 - **Acceptance criteria:**
   - Contract tests fix the gateway-facing API shape (request/response schemas
     for check/capture, error envelopes) so breaking changes fail CI.
