@@ -22,6 +22,19 @@ public class GroupMembershipRepository
             .Select(m => m.GroupId)
             .ToListAsync(ct);
 
+    /// <summary>Returns the caller ids that are members of the given group.</summary>
+    public Task<List<CallerId>> GetCallersForGroupAsync(Guid groupId, CancellationToken ct = default)
+        => _db.GroupMemberships
+            .Where(m => m.GroupId == groupId)
+            .OrderBy(m => m.AddedAt)
+            .Select(m => m.CallerId)
+            .ToListAsync(ct);
+
+    /// <summary>True when the given caller is already a member of the group.</summary>
+    public Task<bool> ExistsAsync(Guid groupId, CallerId callerId, CancellationToken ct = default)
+        => _db.GroupMemberships
+            .AnyAsync(m => m.GroupId == groupId && m.CallerId == callerId, ct);
+
     /// <summary>Adds a membership and saves.</summary>
     public async Task AddAsync(GroupMembership membership, CancellationToken ct = default)
     {

@@ -1,5 +1,6 @@
 using LLMCostControl.Admin.App.Auth;
 using LLMCostControl.Admin.App.Components;
+using LLMCostControl.Admin.App.Services;
 using LLMCostControl.Infrastructure.Data;
 using LLMCostControl.Observability;
 using Microsoft.AspNetCore.Authentication;
@@ -23,6 +24,9 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddDbContextFactory<CostTrackerDbContext>(options =>
         options.UseNpgsql(connectionString));
 }
+
+// Admin command handlers (§12.3) — drive the shared repositories, never grains.
+builder.Services.AddScoped<IAdminCommandService, AdminCommandService>();
 
 // EntraID (Azure AD) OpenID Connect sign-in (§12.2). The admin app's auth is
 // completely independent of the tracker's gateway token; it never accepts that

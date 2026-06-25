@@ -1,0 +1,239 @@
+@page "/administration"
+@rendermode InteractiveServer
+@attribute [Authorize(Policy = AdminAuthorization.AdminPolicy)]
+@inject IAdminCommandService Admin
+
+<PageTitle>Administration</PageTitle>
+
+<h1>Administration</h1>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger" data-testid="error">@_error</div>
+}
+
+<section class="mb-4">
+    <h2>Groups</h2>
+    <div class="input-group mb-2" style="max-width: 480px;">
+        <input class="form-control" placeholder="New group name"
+               data-testid="new-group-name" @bind="_newGroupName" />
+        <button class="btn btn-primary" data-testid="create-group" @onclick="CreateGroupAsync">Create group</button>
+    </div>
+
+    <table class="table">
+        <tbody>
+            @foreach (var group in _groups)
+            {
+                <tr data-testid="group-row">
+                    <td data-testid="group-name">@group.Name</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" data-testid="select-group"
+                                @onclick="() => SelectGroupAsync(group)">Manage</button>
+                        <button class="btn btn-sm btn-outline-danger" data-testid="delete-group"
+                                @onclick="() => DeleteGroupAsync(group)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+@if (_selected is not null)
+{
+    <section class="mb-4" data-testid="selected-group">
+        <h2>Group: <span data-testid="selected-group-name">@_selected.Name</span></h2>
+
+        <div class="input-group mb-3" style="max-width: 480px;">
+            <input class="form-control" data-testid="rename-name" @bind="_renameName" />
+            <button class="btn btn-outline-primary" data-testid="rename-group" @onclick="RenameGroupAsync">Rename</button>
+        </div>
+
+        <h3>Budget (current period)</h3>
+        <p>Current: <span data-testid="current-budget">@(_selectedBudget is null ? "none" : _selectedBudget.Amount.ToString())</span></p>
+        <div class="input-group mb-3" style="max-width: 480px;">
+            <input type="number" step="0.01" class="form-control" data-testid="budget-amount" @bind="_budgetAmount" />
+            <input class="form-control" data-testid="budget-currency" @bind="_budgetCurrency" />
+            <button class="btn btn-primary" data-testid="set-budget" @onclick="SetBudgetAsync">Set budget</button>
+            <button class="btn btn-outline-secondary" data-testid="clear-budget" @onclick="ClearBudgetAsync">Clear</button>
+        </div>
+
+        <h3>Members</h3>
+        <ul>
+            @foreach (var member in _members)
+            {
+                <li data-testid="member">
+                    <span data-testid="member-id">@member</span>
+                    <button class="btn btn-sm btn-link text-danger" data-testid="remove-member"
+                            @onclick="() => RemoveMemberAsync(member)">Remove</button>
+                </li>
+            }
+        </ul>
+        <div class="input-group mb-3" style="max-width: 480px;">
+            <input class="form-control" placeholder="caller@@example.com"
+                   data-testid="new-member" @bind="_newMember" />
+            <button class="btn btn-primary" data-testid="add-member" @onclick="AddMemberAsync">Add member</button>
+        </div>
+    </section>
+}
+
+<section class="mb-4">
+    <h2>Per-user budget override</h2>
+    <div class="input-group mb-2" style="max-width: 480px;">
+        <input class="form-control" placeholder="caller@@example.com"
+               data-testid="override-caller" @bind="_overrideCaller" />
+        <button class="btn btn-outline-secondary" data-testid="lookup-override" @onclick="LookupOverrideAsync">Look up</button>
+    </div>
+    <p>Current: <span data-testid="current-override">@(_override is null ? "none" : _override.Amount.ToString())</span></p>
+    <div class="input-group mb-2" style="max-width: 480px;">
+        <input type="number" step="0.01" class="form-control" data-testid="override-amount" @bind="_overrideAmount" />
+        <input class="form-control" data-testid="override-currency" @bind="_overrideCurrency" />
+        <button class="btn btn-primary" data-testid="set-override" @onclick="SetOverrideAsync">Set override</button>
+        <button class="btn btn-outline-secondary" data-testid="clear-override" @onclick="ClearOverrideAsync">Clear</button>
+    </div>
+</section>
+
+@code {
+    private List<Group> _groups = [];
+    private Group? _selected;
+    private GroupBudget? _selectedBudget;
+    private List<string> _members = [];
+
+    private string _newGroupName = string.Empty;
+    private string _renameName = string.Empty;
+    private decimal _budgetAmount;
+    private string _budgetCurrency = "USD";
+    private string _newMember = string.Empty;
+
+    private string _overrideCaller = string.Empty;
+    private decimal _overrideAmount;
+    private string _overrideCurrency = "USD";
+    private UserBudgetOverride? _override;
+
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadGroupsAsync();
+
+    private async Task LoadGroupsAsync() => _groups = (await Admin.ListGroupsAsync()).ToList();
+
+    private async Task CreateGroupAsync()
+    {
+        if (await GuardAsync(async () =>
+        {
+            var created = await Admin.CreateGroupAsync(_newGroupName);
+            _newGroupName = string.Empty;
+            await LoadGroupsAsync();
+            await SelectGroupAsync(created);
+        }))
+        {
+            return;
+        }
+    }
+
+    private async Task SelectGroupAsync(Group group)
+    {
+        _selected = group;
+        _renameName = group.Name;
+        _selectedBudget = await Admin.GetGroupBudgetAsync(group.Id);
+        _members = (await Admin.ListMembersAsync(group.Id)).ToList();
+    }
+
+    private async Task RenameGroupAsync()
+    {
+        if (_selected is null) return;
+        await GuardAsync(async () =>
+        {
+            await Admin.RenameGroupAsync(_selected.Id, _renameName);
+            await LoadGroupsAsync();
+            var refreshed = _groups.FirstOrDefault(g => g.Id == _selected.Id);
+            if (refreshed is not null) await SelectGroupAsync(refreshed);
+        });
+    }
+
+    private async Task DeleteGroupAsync(Group group)
+    {
+        await GuardAsync(async () =>
+        {
+            await Admin.DeleteGroupAsync(group.Id);
+            if (_selected?.Id == group.Id) _selected = null;
+            await LoadGroupsAsync();
+        });
+    }
+
+    private async Task SetBudgetAsync()
+    {
+        if (_selected is null) return;
+        await GuardAsync(async () =>
+        {
+            await Admin.SetGroupBudgetAsync(_selected.Id, _budgetAmount, _budgetCurrency);
+            _selectedBudget = await Admin.GetGroupBudgetAsync(_selected.Id);
+        });
+    }
+
+    private async Task ClearBudgetAsync()
+    {
+        if (_selected is null) return;
+        await GuardAsync(async () =>
+        {
+            await Admin.ClearGroupBudgetAsync(_selected.Id);
+            _selectedBudget = null;
+        });
+    }
+
+    private async Task AddMemberAsync()
+    {
+        if (_selected is null) return;
+        await GuardAsync(async () =>
+        {
+            await Admin.AddMemberAsync(_selected.Id, _newMember);
+            _newMember = string.Empty;
+            _members = (await Admin.ListMembersAsync(_selected.Id)).ToList();
+        });
+    }
+
+    private async Task RemoveMemberAsync(string callerId)
+    {
+        if (_selected is null) return;
+        await GuardAsync(async () =>
+        {
+            await Admin.RemoveMemberAsync(_selected.Id, callerId);
+            _members = (await Admin.ListMembersAsync(_selected.Id)).ToList();
+        });
+    }
+
+    private async Task LookupOverrideAsync()
+        => await GuardAsync(async () => _override = await Admin.GetUserOverrideAsync(_overrideCaller));
+
+    private async Task SetOverrideAsync()
+    {
+        await GuardAsync(async () =>
+        {
+            await Admin.SetUserOverrideAsync(_overrideCaller, _overrideAmount, _overrideCurrency);
+            _override = await Admin.GetUserOverrideAsync(_overrideCaller);
+        });
+    }
+
+    private async Task ClearOverrideAsync()
+    {
+        await GuardAsync(async () =>
+        {
+            await Admin.ClearUserOverrideAsync(_overrideCaller);
+            _override = null;
+        });
+    }
+
+    /// <summary>Runs an action, surfacing any failure as a displayed error. Returns true on failure.</summary>
+    private async Task<bool> GuardAsync(Func<Task> action)
+    {
+        try
+        {
+            _error = null;
+            await action();
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            return true;
+        }
+    }
+}
