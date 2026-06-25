@@ -27,7 +27,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M14 | Localhost pricing file import endpoint | §8.3 | M5, M7 | [x] | [x] |
 | M15 | Effective-group telemetry tagging | §10.2 | M10, M11, M2 | [x] | [x] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | §12.1, §12.2 | M4 | [x] | [x] |
-| M17 | Admin app: groups/budgets/membership/overrides CRUD | §12.3 | M16, M4 | [ ] | [ ] |
+| M17 | Admin app: groups/budgets/membership/overrides CRUD | §12.3 | M16, M4 | [x] | [x] |
 | M18 | Admin app: read-only views + pricing file upload | §12.3 | M17, M5 | [ ] | [ ] |
 | M19 | Contract/conformance tests + E2E local-dev verification | §13.4, §14.3 | M13, M14, M15, M18 | [ ] | [ ] |
 
@@ -321,7 +321,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §12.3 (admin commands)
 - **Depends on:** M16, M4
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - UI + handlers for: create/list/rename/delete group; set/update/clear group
     budget (amount + currency) for the current period; add/remove a caller id
