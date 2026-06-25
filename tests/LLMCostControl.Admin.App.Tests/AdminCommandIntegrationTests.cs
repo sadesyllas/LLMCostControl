@@ -2,6 +2,7 @@ using LLMCostControl.Admin.App.Services;
 using LLMCostControl.Domain.Budgets;
 using LLMCostControl.Domain.Common;
 using LLMCostControl.Infrastructure.Data;
+using LLMCostControl.Infrastructure.Pricing;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 
@@ -38,7 +39,10 @@ public sealed class AdminCommandIntegrationTests : IAsyncLifetime
 
         var factory = new DbContextFactory(_postgres.GetConnectionString());
         _dbContextFactory = factory;
-        _service = new AdminCommandService(factory);
+        var publisher = new NullPricingUpdatePublisher();
+        var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<PricingFileImporter>.Instance;
+        var importer = new PricingFileImporter(factory, publisher, logger);
+        _service = new AdminCommandService(factory, importer);
     }
 
     public async Task DisposeAsync()

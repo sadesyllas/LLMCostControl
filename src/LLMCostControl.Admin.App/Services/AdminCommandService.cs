@@ -1,6 +1,9 @@
 using LLMCostControl.Domain.Budgets;
 using LLMCostControl.Domain.Common;
+using LLMCostControl.Domain.Pricing;
+using LLMCostControl.Domain.Usage;
 using LLMCostControl.Infrastructure.Data;
+using LLMCostControl.Infrastructure.Pricing;
 using LLMCostControl.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,11 +17,15 @@ namespace LLMCostControl.Admin.App.Services;
 public sealed class AdminCommandService : IAdminCommandService
 {
     private readonly IDbContextFactory<CostTrackerDbContext> _dbContextFactory;
+    private readonly PricingFileImporter _pricingFileImporter;
 
-    /// <summary>Creates the service with the given DbContext factory.</summary>
-    public AdminCommandService(IDbContextFactory<CostTrackerDbContext> dbContextFactory)
+    /// <summary>Creates the service with the given DbContext factory and pricing file importer.</summary>
+    public AdminCommandService(
+        IDbContextFactory<CostTrackerDbContext> dbContextFactory,
+        PricingFileImporter pricingFileImporter)
     {
         _dbContextFactory = dbContextFactory;
+        _pricingFileImporter = pricingFileImporter;
     }
 
     // ── Groups ──
@@ -156,5 +163,69 @@ public sealed class AdminCommandService : IAdminCommandService
             .Where(o => o.Period == period)
             .OrderBy(o => o.CallerId.Value)
             .ToList();
+    }
+
+    // ── Read-only views (§12.3) ──
+
+    /// <summary>
+    /// Resolves the effective budget for a caller for the current period using
+    /// the shared <see cref="BudgetResolutionRepository"/>.
+    /// </summary>
+    public async Task<EffectiveBudget> GetEffectiveBudgetAsync(string callerId, CancellationToken ct = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(ct);
+        var repo = new BudgetResolutionRepository(db);
+        return await repo.ResolveAsync(CallerId.From(callerId), BudgetPeriod.Current(), ct);
+    }
+
+    /// <summary>
+    /// Computes the running spend for a caller for the current period by
+    /// summing <c>cost_amount</c> from the append-only usage events ledger.
+    /// </summary>
+    public async Task<decimal> GetRunningSpendAsync(string callerId, CancellationToken ct = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(ct);
+        var period = BudgetPeriod.Current();
+        var caller = CallerId.From(callerId);
+        var events = await db.UsageEvents
+            .Where(e => e.CallerId == caller)
+            .ToListAsync(ct);
+        return events
+            .Where(e => e.Period == period)
+            .Sum(e => e.CostAmount);
+    }
+
+    /// <summary>
+    /// Returns all current pricing entries, ordered by provider then model.
+    /// </summary>
+    public async Task<List<ModelPricing>> ListPricingAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(ct);
+        var repo = new ModelPricingRepository(db);
+        return await repo.GetAllAsync(ct);
+    }
+
+    /// <summary>
+    /// Returns recent usage events for a caller (most recent first).
+    /// </summary>
+    public async Task<List<UsageEvent>> ListUsageEventsAsync(string callerId, int limit = 50, CancellationToken ct = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(ct);
+        var caller = CallerId.From(callerId);
+        var repo = new UsageEventRepository(db);
+        var period = BudgetPeriod.Current();
+        var events = await repo.GetForCallerAsync(caller, period, ct);
+        return events.TakeLast(limit).Reverse().ToList();
+    }
+
+    // ── Pricing file upload (§12.3, §8.3) ──
+
+    /// <summary>
+    /// Validates and imports a canonical pricing file (§8.5) via the shared
+    /// <see cref="PricingFileImporter"/> (same code path as M14).
+    /// </summary>
+    public async Task<PricingFileImportResult> ImportPricingFileAsync(string json, CancellationToken ct = default)
+    {
+        return await _pricingFileImporter.ImportAsync(json, ct);
     }
 }

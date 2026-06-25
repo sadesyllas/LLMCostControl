@@ -1,0 +1,89 @@
+@page "/caller"
+@attribute [Authorize]
+@inject IAdminCommandService Admin
+
+<PageTitle>Caller Info</PageTitle>
+
+<h1>Caller Information</h1>
+
+<div class="mb-3">
+    <div class="input-group" style="max-width:400px">
+        <input class="form-control" @bind="_callerId" placeholder="caller@example.com" />
+        <button class="btn btn-primary" @onclick="Load">Look Up</button>
+    </div>
+</div>
+
+@if (_loaded)
+{
+    <h2>Effective Budget</h2>
+    @if (_budget.HasBudget)
+    {
+        <p>
+            Source: <strong>@_budget.Source</strong><br />
+            Amount: <strong>@_budget.Amount!.Amount @(_budget.Amount.Currency)</strong>
+            @if (_budget.GroupId is not null)
+            {
+                <text><br />Group: @_budget.GroupId</text>
+            }
+        </p>
+    }
+    else
+    {
+        <p class="text-muted">No budget configured for this caller.</p>
+    }
+
+    <h2 class="mt-3">Running Spend</h2>
+    <p>@_runningSpend.ToString("F2")</p>
+
+    <h2 class="mt-3">Recent Usage Events</h2>
+    @if (_events.Count == 0)
+    {
+        <p class="text-muted">No usage events for the current period.</p>
+    }
+    else
+    {
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Captured</th>
+                    <th>Model</th>
+                    <th>Input</th>
+                    <th>Output</th>
+                    <th>Cost</th>
+                    <th>Running Spend After</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in _events)
+                {
+                    <tr>
+                        <td>@e.CapturedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@e.Model</td>
+                        <td>@e.TokensInput</td>
+                        <td>@e.TokensOutput</td>
+                        <td>@e.CostAmount.ToString("F4") @e.CostCurrency</td>
+                        <td>@e.RunningSpendAfter.ToString("F4")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private string _callerId = string.Empty;
+    private bool _loaded;
+    private EffectiveBudget _budget = EffectiveBudget.None();
+    private decimal _runningSpend;
+    private List<UsageEvent> _events = new();
+
+    private async Task Load()
+    {
+        if (string.IsNullOrWhiteSpace(_callerId)) return;
+
+        _budget = await Admin.GetEffectiveBudgetAsync(_callerId);
+        _runningSpend = await Admin.GetRunningSpendAsync(_callerId);
+        _events = await Admin.ListUsageEventsAsync(_callerId);
+        _loaded = true;
+    }
+}

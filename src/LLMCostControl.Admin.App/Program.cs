@@ -2,6 +2,7 @@ using LLMCostControl.Admin.App.Auth;
 using LLMCostControl.Admin.App.Components;
 using LLMCostControl.Admin.App.Services;
 using LLMCostControl.Infrastructure.Data;
+using LLMCostControl.Infrastructure.Pricing;
 using LLMCostControl.Observability;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -28,6 +29,8 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddScoped<IAdminCommandService, AdminCommandService>();
+builder.Services.AddSingleton<IPricingUpdatePublisher, NullPricingUpdatePublisher>();
+builder.Services.AddScoped<PricingFileImporter>();
 
 // EntraID (Azure AD) OIDC authentication (§12.2).
 var authOptions = builder.Configuration.GetSection("EntraId").Get<AdminAuthOptions>() ?? new();

@@ -1,0 +1,115 @@
+@page "/pricing"
+@attribute [Authorize]
+@inject IAdminCommandService Admin
+
+<PageTitle>Pricing</PageTitle>
+
+<h1>Current Pricing</h1>
+
+@if (_pricing is null)
+{
+    <p>Loading...</p>
+}
+else if (_pricing.Count == 0)
+{
+    <p class="text-muted">No pricing entries.</p>
+}
+else
+{
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Provider</th>
+                <th>Model</th>
+                <th>Input</th>
+                <th>Output</th>
+                <th>Cache Read</th>
+                <th>Cache Write</th>
+                <th>Currency</th>
+                <th>Fetched</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in _pricing)
+            {
+                <tr>
+                    <td>@p.Provider</td>
+                    <td>@p.Model</td>
+                    <td>@p.Prices.Input</td>
+                    <td>@p.Prices.Output</td>
+                    <td>@(p.Prices.CacheRead?.ToString() ?? "—")</td>
+                    <td>@(p.Prices.CacheWrite?.ToString() ?? "—")</td>
+                    <td>@p.Currency</td>
+                    <td>@p.FetchedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        @if (p.IsStale)
+                        {
+                            <span class="badge bg-warning">Stale since @p.StaleSince!.Value.ToString("yyyy-MM-dd")</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">Fresh</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<AuthorizeView Roles="@AppRoles.Admin">
+    <Authorized>
+        <h2 class="mt-4">Upload Pricing File</h2>
+        <div class="mb-3">
+            <label class="form-label" for="pricingFile">Canonical pricing JSON (§8.5)</label>
+            <InputFile id="pricingFile" class="form-control" OnChange="OnFileSelected" />
+        </div>
+        @if (_uploadError is not null)
+        {
+            <div class="alert alert-danger">
+                <strong>Import failed:</strong> @_uploadError
+            </div>
+        }
+        @if (_uploadSuccess)
+        {
+            <div class="alert alert-success">
+                Imported @_importedCount model(s) successfully.
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private List<ModelPricing>? _pricing;
+    private string? _uploadError;
+    private bool _uploadSuccess;
+    private int _importedCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _pricing = await Admin.ListPricingAsync();
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _uploadError = null;
+        _uploadSuccess = false;
+
+        var file = e.File;
+        using var reader = new StreamReader(file.OpenReadStream());
+        var json = await reader.ReadToEndAsync();
+
+        var result = await Admin.ImportPricingFileAsync(json);
+
+        if (!result.Success)
+        {
+            _uploadError = string.Join("; ", result.Errors);
+            return;
+        }
+
+        _uploadSuccess = true;
+        _importedCount = result.ImportedCount;
+        _pricing = await Admin.ListPricingAsync();
+    }
+}
