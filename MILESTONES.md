@@ -22,7 +22,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M9 | PricingGrain ([StatelessWorker] + stream sub) | §8.6 | M8, M7 | [x] | [x] |
 | M10 | UserBudgetGrain: budget resolution + 30 s TTL | §7, §9.1, §12.4 | M8, M4 | [x] | [x] |
 | M11 | Cost accrual + usage audit trail | §6.2.2 (cost), §9.4 | M9, M10 | [x] | [x] |
-| M12 | Auth: OAuth/JWKS validation | §6.1 | M0 | [ ] | [ ] |
+| M12 | Auth: OAuth/JWKS validation | §6.1 | M0 | [x] | [x] |
 | M13 | Tracker API: check + capture endpoints | §6.2.1, §6.2.2 | M11, M12 | [ ] | [ ] |
 | M14 | Localhost pricing file import endpoint | §8.3 | M5, M7 | [ ] | [ ] |
 | M15 | Effective-group telemetry tagging | §10.2 | M10, M11, M2 | [ ] | [ ] |
@@ -237,7 +237,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §6.1
 - **Depends on:** M0
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - Configurable JWKS / public-key endpoints (one or more issuers), expected
     `iss`/`aud`.
