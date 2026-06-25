@@ -1,7 +1,7 @@
 # Context Snapshot
 
-Snapshot taken after completing milestone **M15**. This file is a quick-reference
-for resuming work on **M16** and beyond.
+Snapshot taken after completing milestone **M16**. This file is a quick-reference
+for resuming work on **M17** and beyond.
 
 ## Project Status
 
@@ -23,17 +23,17 @@ for resuming work on **M16** and beyond.
 | M13 | Tracker API: check + capture endpoints | [x] | [x] |
 | M14 | Localhost pricing file import endpoint | [x] | [x] |
 | M15 | Effective-group telemetry tagging | [x] | [x] |
-| M16 | Blazor admin app: scaffolding + EntraID auth | [ ] | [ ] |
+| M16 | Blazor admin app: scaffolding + EntraID auth | [x] | [x] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | [ ] | [ ] |
 | M18 | Admin app: read-only views + pricing file upload | [ ] | [ ] |
 | M19 | Contract/conformance tests + E2E local-dev verification | [ ] | [ ] |
 
-**Next milestone: M16** — Blazor admin app: scaffolding + EntraID auth (Spec ref
-§12.1, §12.2, depends on M4).
+**Next milestone: M17** — Admin app: groups/budgets/membership/overrides CRUD
+(Spec ref §12.3, depends on M16, M4).
 
 ## Test Counts (verified green)
 
-Total: **125 tests**, all passing.
+Total: **130 tests**, all passing.
 
 | Test project | Tests |
 |--------------|------:|
@@ -42,7 +42,7 @@ Total: **125 tests**, all passing.
 | LLMCostControl.Grains.Tests | 24 |
 | LLMCostControl.Tracker.Api.Tests | 21 (6 auth + 7 endpoint + 3 import + 4 telemetry + 1 smoke) |
 | LLMCostControl.Observability.Tests | 1 |
-| LLMCostControl.Admin.App.Tests | 1 |
+| LLMCostControl.Admin.App.Tests | 6 (4 bUnit auth-gated + 1 OIDC sign-in + 1 smoke) |
 
 > **Note:** `LLMCostControl.Infrastructure.Tests` (40) use **Testcontainers**
 > Postgres and require a running Docker daemon. They cannot run in an
@@ -83,8 +83,13 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   - Orleans 10.2.0 (Server, Persistence.AdoNet, Streaming, TestingHost)
   - EF Core 9.0.1 + Npgsql.EntityFrameworkCore.PostgreSQL 9.0.4
   - Npgsql 9.0.3
-  - Microsoft.AspNetCore.Authentication.JwtBearer 9.0.0
-  - System.IdentityModel.Tokens.Jwt / Microsoft.IdentityModel.Tokens 8.3.0
+  - Microsoft.AspNetCore.Authentication.JwtBearer 10.0.0 (bumped in M16 — required
+    by Microsoft.Identity.Web 4.11.0; works on the net11 host)
+  - Microsoft.Identity.Web 4.11.0 (M16, EntraID OIDC for the admin app)
+  - System.IdentityModel.Tokens.Jwt / Microsoft.IdentityModel.Tokens 8.19.1
+    (bumped in M16 from 8.3.0 to satisfy Microsoft.Identity.Web)
+  - bunit 2.7.2 (Blazor component tests; **v2 API**: `Render<T>()` not
+    `RenderComponent<T>()`; `AddAuthorization()` returns `BunitAuthorizationContext`)
   - Serilog 4.3.0 + sinks (Console, Seq, OpenTelemetry)
   - OpenTelemetry 1.16.0 exporters
   - Microsoft.Extensions.Hosting 10.0.5
@@ -152,6 +157,23 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
     request's activity/log context lives at the API layer, not in the silo. Tag
     value `effective_group = "none"` (sentinel) when there is no group so the tag
     is always present and sliceable. Keys: `effective_group`, `budget_source`.
+20. **M16 admin auth uses Microsoft.Identity.Web (EntraID OIDC).** This forced two
+    solution-wide package bumps: `Microsoft.AspNetCore.Authentication.JwtBearer`
+    9.0.0→10.0.0 and `Microsoft.IdentityModel.*` 8.3.0→8.19.1. Tracker.Api auth
+    (M12) re-verified green afterward. Auth is gated on `AzureAd:ClientId` so the
+    app still boots without EntraID. Role gating in markup uses
+    `<AuthorizeView Roles=...>` (not Policy) because bUnit's `SetRoles` maps to it
+    cleanly. Auth enforced per-page via `[Authorize]` + `AuthorizeRouteView` (NOT a
+    global FallbackPolicy — that would block static assets / the login endpoint).
+21. **WebApplicationFactory config-before-Program gotcha (M16 OIDC test).** Program
+    reads `AzureAd:ClientId` at top level *before* `ConfigureWebHost` app-config is
+    applied, so test config must be injected via an overridden `CreateHost` +
+    `ConfigureHostConfiguration` (same pattern as `TrackerApiFactory`). OIDC
+    discovery is stubbed with `StaticConfigurationManager<OpenIdConnectConfiguration>`
+    via `PostConfigure<OpenIdConnectOptions>` (no network, no live IdP).
+22. **M16 deferred to M17:** the admin app references Infrastructure and registers
+    `IDbContextFactory<CostTrackerDbContext>` (the shared-repo data path, no grains),
+    but actual repository registration + CRUD pages land in M17.
 
 ## Key Source Files
 
@@ -221,6 +243,24 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   DI-registered `Serilog.Core.ILogEventSink` (M15: lets tests capture log
   events in-memory; no-op in prod)
 
+### Admin App (`src/LLMCostControl.Admin.App/`) — Blazor Web App (Interactive Server)
+- `Program.cs` — EntraID OIDC via `AddMicrosoftIdentityWebApp("AzureAd")` (gated
+  on `AzureAd:ClientId` so it boots without EntraID in dev/tests); role policies;
+  `AddCascadingAuthenticationState`; minimal `/authentication/login` (Challenge) +
+  `/authentication/logout` (SignOut) endpoints; conditional
+  `AddDbContextFactory<CostTrackerDbContext>` (shared repos, **no Orleans/grains**,
+  §12.1). Ends with `public partial class Program;` for `WebApplicationFactory`
+- `Auth/AdminAuthorization.cs` — role names (`CostTracker.Admin`/`.ReadOnly`) +
+  policy names (`AdminPolicy`/`ReadOnlyPolicy`)
+- `Components/Auth/RedirectToLogin.razor` (navigates to login),
+  `LoginDisplay.razor` (user + sign-out form)
+- `Components/Routes.razor` — `AuthorizeRouteView` + `NotAuthorized`→`RedirectToLogin`
+- `Components/Layout/NavMenu.razor` — `<AuthorizeView Roles=...>` gates "Reports"
+  (any role) and "Administration" (`data-testid=admin-nav-link`, Admin only).
+  Demo Counter/Weather pages removed
+- `Home.razor` has `@attribute [Authorize]`; `appsettings.json` has an `AzureAd`
+  section (empty placeholders; secret via env/user-secrets)
+
 ## Key Test Files
 
 - `Grains.Tests/GrainTestBase.cs` — `GrainClusterFixture`, shared static
@@ -252,6 +292,15 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 - `Tracker.Api.Tests/TestStubs.cs` — simpler stub stores for API integration
   (`StubPricingStore` now has `ReplaceProvider`/`Clear`/`Count` for import tests)
 - `Tracker.Api.Tests/SmokeTests.cs` — 1 smoke test
+- `Admin.App.Tests/AuthGatedRenderingTests.cs` — 4 bUnit tests (admin/readonly/
+  anonymous nav gating + RedirectToLogin). Uses `AddAuthorization()` +
+  `BunitAuthorizationContext.SetAuthorized/SetRoles/SetNotAuthorized`, `Render<T>()`
+- `Admin.App.Tests/OidcSignInTests.cs` — 1 integration test: GET
+  `/authentication/login` → 302 to a stubbed OIDC authorize endpoint.
+  `AdminAppFactory` injects `AzureAd:*` via `CreateHost`+`ConfigureHostConfiguration`
+  (so Program reads it at top level) and stubs OIDC metadata via
+  `PostConfigure<OpenIdConnectOptions>` + `StaticConfigurationManager`
+- `Admin.App.Tests/SmokeTests.cs` — 1 smoke test
 - `Infrastructure.Tests/RepositoryTestBase.cs` — Testcontainers Postgres
 - `Infrastructure.Tests/Stubs/StubPricingComponents.cs`
 
@@ -272,6 +321,9 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 ## Git History (recent)
 
 ```
+670b119 M16: mark milestone done and tested
+b354a47 M16: Blazor admin app scaffolding + EntraID auth
+b9043d7 docs: update CONTEXT_SNAPSHOT.md after M15
 d1c0812 M15: mark milestone done and tested
 5ccb718 M15: effective-group telemetry tagging on check/capture
 392fd5d docs: update CONTEXT_SNAPSHOT.md after M14
