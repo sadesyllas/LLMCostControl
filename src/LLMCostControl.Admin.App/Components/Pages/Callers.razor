@@ -1,0 +1,289 @@
+@page "/callers"
+@attribute [Authorize]
+@inject IDbContextFactory<CostTrackerDbContext> DbFactory
+@using LLMCostControl.Domain.Budgets
+@using LLMCostControl.Domain.Common
+@using LLMCostControl.Domain.Usage
+@using LLMCostControl.Infrastructure.Data
+@using LLMCostControl.Infrastructure.Repositories
+@using Microsoft.EntityFrameworkCore
+
+<div class="admin-container">
+    <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1">Callers & Spend Monitoring</h1>
+            <p class="text-muted mb-0">Monitor resolved budgets, running spend, and detailed usage trails for the current period: <strong>@_currentPeriod</strong></p>
+        </div>
+        <div>
+            <span class="badge bg-secondary p-2">Period: @_currentPeriod</span>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible mb-4 shadow-sm" role="alert">
+            <strong>Error:</strong> @_errorMessage
+            <button type="button" class="btn-close" @onclick="() => _errorMessage = null" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (_callers == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading callers...</span>
+            </div>
+        </div>
+    }
+    else if (!_callers.Any())
+    {
+        <div class="text-center py-5 card border-0 shadow-sm">
+            <div class="card-body">
+                <p class="text-muted mb-0">No active callers or budget allocations found in the system.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            <!-- Left Side: Callers List -->
+            <div class="col-lg-7">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white py-3">
+                        <h2 class="h5 mb-0 font-semibold">Active Callers</h2>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" id="callers-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="py-3 px-3">Caller Email</th>
+                                    <th class="py-3 px-3">Effective Budget</th>
+                                    <th class="py-3 px-3">Source</th>
+                                    <th class="py-3 px-3">Spend</th>
+                                    <th class="py-3 px-3">Remaining</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var caller in _callers)
+                                {
+                                    <tr @onclick="() => SelectCallerAsync(caller)" 
+                                        class="cursor-pointer caller-row @(_selectedCaller?.Email == caller.Email ? "table-primary" : "")" 
+                                        style="cursor: pointer;"
+                                        id="caller-row-@caller.Email.Replace("@", "-at-").Replace(".", "-dot-")">
+                                        <td class="px-3 font-mono small font-semibold">@caller.Email</td>
+                                        <td class="px-3 small">
+                                            @if (caller.EffectiveBudget.HasBudget)
+                                            {
+                                                <span>@caller.EffectiveBudget.Amount!.Amount.ToString("F2") @caller.EffectiveBudget.Amount.Currency</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">None</span>
+                                            }
+                                        </td>
+                                        <td class="px-3">
+                                            <span class="badge @GetSourceBadgeClass(caller.EffectiveBudget.Source)">
+                                                @caller.EffectiveBudget.Source
+                                            </span>
+                                        </td>
+                                        <td class="px-3 font-bold text-danger">
+                                            @caller.RunningSpend.ToString("F2") @caller.PreferredCurrency
+                                        </td>
+                                        <td class="px-3 font-bold @(caller.RemainingBudget < 0 ? "text-danger" : "text-success")">
+                                            @if (caller.EffectiveBudget.HasBudget)
+                                            {
+                                                <span>@caller.RemainingBudget.ToString("F2") @caller.PreferredCurrency</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">N/A</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Usage Event Logs -->
+            <div class="col-lg-5">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                        <h2 class="h5 mb-0 font-semibold">Usage Audit Trail</h2>
+                        @if (_selectedCaller != null)
+                        {
+                            <span class="badge bg-primary">@_selectedCaller.Email</span>
+                        }
+                    </div>
+                    <div class="card-body d-flex flex-column" id="audit-trail-container">
+                        @if (_selectedCaller == null)
+                        {
+                            <div class="text-center py-5 my-auto text-muted">
+                                <p class="mb-0">Select a caller from the list to inspect their usage events and audit logs.</p>
+                            </div>
+                        }
+                        else if (_usageEvents == null)
+                        {
+                            <div class="text-center py-5 my-auto">
+                                <div class="spinner-border text-secondary" role="status">
+                                    <span class="visually-hidden">Loading audit events...</span>
+                                </div>
+                            </div>
+                        }
+                        else if (!_usageEvents.Any())
+                        {
+                            <div class="text-center py-5 my-auto text-muted" id="no-events-message">
+                                <p class="mb-0">No usage events captured for <strong>@_selectedCaller.Email</strong> in this period.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="flex-grow-1 overflow-auto" style="max-height: 500px;" id="events-list">
+                                @foreach (var ev in _usageEvents.OrderByDescending(e => e.CapturedAt))
+                                {
+                                    <div class="card border-0 bg-light mb-3 p-3 usage-event-item">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <div>
+                                                <span class="font-bold text-dark font-mono small">@ev.Model</span>
+                                                <span class="d-block small text-muted">@ev.CapturedAt.ToString("g")</span>
+                                            </div>
+                                            <span class="badge bg-danger p-2 font-bold font-mono">@ev.CostAmount.ToString("F4") @ev.CostCurrency</span>
+                                        </div>
+                                        <div class="border-top pt-2 mt-2">
+                                            <div class="row text-center g-2 small">
+                                                <div class="col-3 border-end">
+                                                    <span class="d-block text-muted text-xs">Input</span>
+                                                    <span class="font-mono font-semibold">@ev.TokensInput</span>
+                                                </div>
+                                                <div class="col-3 border-end">
+                                                    <span class="d-block text-muted text-xs">Output</span>
+                                                    <span class="font-mono font-semibold">@ev.TokensOutput</span>
+                                                </div>
+                                                <div class="col-3 border-end">
+                                                    <span class="d-block text-muted text-xs">Cache R</span>
+                                                    <span class="font-mono font-semibold">@ev.TokensCacheRead</span>
+                                                </div>
+                                                <div class="col-3">
+                                                    <span class="d-block text-muted text-xs">Cache W</span>
+                                                    <span class="font-mono font-semibold">@ev.TokensCacheWrite</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="border-top pt-2 mt-2 d-flex justify-content-between text-muted text-xs">
+                                            <span>Spend After: @ev.RunningSpendAfter.ToString("F2") @ev.CostCurrency</span>
+                                            <span class="text-truncate" style="max-width: 150px;" title="Request ID: @ev.EventId">ID: @ev.EventId</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<CallerViewModel>? _callers;
+    private CallerViewModel? _selectedCaller;
+    private List<UsageEvent>? _usageEvents;
+    private string? _errorMessage;
+    private BudgetPeriod _currentPeriod;
+
+    /// <summary>
+    /// UI-specific view model representing a caller's aggregated metrics.
+    /// </summary>
+    public sealed class CallerViewModel
+    {
+        public required string Email { get; init; }
+        public required EffectiveBudget EffectiveBudget { get; init; }
+        public required decimal RunningSpend { get; init; }
+        public required string PreferredCurrency { get; init; }
+        public decimal RemainingBudget => EffectiveBudget.HasBudget 
+            ? EffectiveBudget.Amount!.Amount - RunningSpend 
+            : 0m;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentPeriod = BudgetPeriod.Current();
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var budgetResolutionRepo = new BudgetResolutionRepository(context);
+            var usageEventRepo = new UsageEventRepository(context);
+
+            // Fetch distinct caller emails from all linked aggregates
+            var members = (await context.GroupMemberships.Select(m => m.CallerId).ToListAsync()).Select(c => c.Value);
+            var overrides = (await context.UserBudgetOverrides.Select(o => o.CallerId).ToListAsync()).Select(c => c.Value);
+            var usageEvents = (await context.UsageEvents.Select(e => e.CallerId).ToListAsync()).Select(c => c.Value);
+
+            var emails = members
+                .Concat(overrides)
+                .Concat(usageEvents)
+                .Distinct()
+                .OrderBy(e => e)
+                .ToList();
+
+            var viewModels = new List<CallerViewModel>();
+            foreach (var email in emails)
+            {
+                var callerId = CallerId.From(email);
+                
+                // Resolve effective budget
+                var budget = await budgetResolutionRepo.ResolveAsync(callerId, _currentPeriod);
+
+                // Compute running spend for period
+                var events = await usageEventRepo.GetForCallerAsync(callerId, _currentPeriod);
+                var spend = events.Sum(e => e.CostAmount);
+                var currency = events.FirstOrDefault()?.CostCurrency ?? budget.Amount?.Currency ?? "USD";
+
+                viewModels.Add(new CallerViewModel
+                {
+                    Email = email,
+                    EffectiveBudget = budget,
+                    RunningSpend = spend,
+                    PreferredCurrency = currency
+                });
+            }
+
+            _callers = viewModels;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load callers: {ex.Message}";
+        }
+    }
+
+    private async Task SelectCallerAsync(CallerViewModel caller)
+    {
+        _selectedCaller = caller;
+        _usageEvents = null;
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var usageEventRepo = new UsageEventRepository(context);
+            _usageEvents = await usageEventRepo.GetForCallerAsync(CallerId.From(caller.Email), _currentPeriod);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load audit trail for {caller.Email}: {ex.Message}";
+        }
+    }
+
+    private static string GetSourceBadgeClass(BudgetSource source) => source switch
+    {
+        BudgetSource.UserOverride => "bg-warning text-dark",
+        BudgetSource.Group => "bg-info text-dark",
+        _ => "bg-light text-dark"
+    };
+}

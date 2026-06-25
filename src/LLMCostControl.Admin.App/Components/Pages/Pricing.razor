@@ -1,0 +1,181 @@
+@page "/pricing"
+@attribute [Authorize]
+@inject IDbContextFactory<CostTrackerDbContext> DbFactory
+@using System.IO
+@using LLMCostControl.Domain.Pricing
+@using LLMCostControl.Infrastructure.Data
+@using LLMCostControl.Infrastructure.Pricing
+@using LLMCostControl.Infrastructure.Repositories
+@using Microsoft.EntityFrameworkCore
+
+<div class="admin-container">
+    <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1">Model Pricing Configuration</h1>
+            <p class="text-muted mb-0">Monitor model token prices per 1M tokens, view cache prices, check pricing freshness, and upload canonical pricing definitions.</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible mb-4 shadow-sm" role="alert" id="pricing-error-alert">
+            <strong>Error:</strong> @_errorMessage
+            <button type="button" class="btn-close" @onclick="() => _errorMessage = null" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_successMessage))
+    {
+        <div class="alert alert-success alert-dismissible mb-4 shadow-sm" role="alert" id="pricing-success-alert">
+            <strong>Success:</strong> @_successMessage
+            <button type="button" class="btn-close" @onclick="() => _successMessage = null" aria-label="Close"></button>
+        </div>
+    }
+
+    <AuthorizeView Roles="CostTracker.Admin">
+        <Authorized>
+            <div class="card shadow-sm border-0 mb-4 bg-light">
+                <div class="card-body">
+                    <h2 class="h5 card-title mb-3">Upload Canonical Pricing File</h2>
+                    <p class="text-muted small">Upload a valid JSON pricing definitions file. The entire file is validated before updating. Mismatches or validation failures reject the import completely.</p>
+                    <div class="mt-3">
+                        <InputFile OnChange="HandleFileSelected" class="form-control" accept=".json" id="pricing-file-input" />
+                    </div>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+
+    @if (_pricingModels == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading model prices...</span>
+            </div>
+        </div>
+    }
+    else if (!_pricingModels.Any())
+    {
+        <div class="text-center py-5 card border-0 shadow-sm">
+            <div class="card-body">
+                <p class="text-muted mb-0">No pricing models defined in the database. Upload a pricing file to initialize model rates.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm border-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="pricing-table">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="py-3 px-3">Model</th>
+                            <th class="py-3 px-3">Provider</th>
+                            <th class="py-3 px-3">Input Price</th>
+                            <th class="py-3 px-3">Output Price</th>
+                            <th class="py-3 px-3">Cache Read Price</th>
+                            <th class="py-3 px-3">Cache Write Price</th>
+                            <th class="py-3 px-3">Fetched At</th>
+                            <th class="py-3 px-3">Freshness</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _pricingModels)
+                        {
+                            <tr id="pricing-row-@p.Model.Replace(".", "-").Replace("/", "-")">
+                                <td class="px-3 font-semibold text-dark font-mono small">@p.Model</td>
+                                <td class="px-3"><span class="badge bg-secondary">@p.Provider</span></td>
+                                <td class="px-3 font-mono text-primary font-semibold text-end">@p.Prices.Input.ToString("F4") <span class="text-xs text-muted">@p.Currency</span></td>
+                                <td class="px-3 font-mono text-primary font-semibold text-end">@p.Prices.Output.ToString("F4") <span class="text-xs text-muted">@p.Currency</span></td>
+                                <td class="px-3 font-mono text-end">
+                                    @(p.Prices.CacheRead?.ToString("F4") ?? "0.0000") <span class="text-xs text-muted">@p.Currency</span>
+                                </td>
+                                <td class="px-3 font-mono text-end">
+                                    @(p.Prices.CacheWrite?.ToString("F4") ?? "0.0000") <span class="text-xs text-muted">@p.Currency</span>
+                                </td>
+                                <td class="px-3 small text-muted">@p.FetchedAt.ToString("g")</td>
+                                <td class="px-3">
+                                    @if (p.IsStale)
+                                    {
+                                        <span class="badge bg-danger staleness-badge" title="Stale since @p.StaleSince">Stale</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success freshness-badge">Fresh</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<ModelPricing>? _pricingModels;
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var repo = new ModelPricingRepository(context);
+            _pricingModels = await repo.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load pricing models: {ex.Message}";
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        _errorMessage = null;
+        _successMessage = null;
+
+        var file = e.File;
+        if (file == null) return;
+
+        try
+        {
+            // Limit file upload sizes to 1MB (our JSON files are small)
+            using var stream = file.OpenReadStream(1024 * 1024);
+            using var reader = new StreamReader(stream);
+            var content = await reader.ReadToEndAsync();
+
+            // Validate against schema (§8.5)
+            var parseResult = PricingFileValidator.Parse(content);
+            if (!parseResult.IsValid)
+            {
+                _errorMessage = $"Pricing file validation failed: {string.Join("; ", parseResult.Errors)}";
+                return;
+            }
+
+            // Save transactional replacement via same repository code path (DRY)
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var repo = new ModelPricingRepository(context);
+
+            var grouped = parseResult.Entries.GroupBy(p => p.Provider);
+            foreach (var group in grouped)
+            {
+                await repo.ReplaceProviderPricingAsync(group.Key, group.ToList());
+            }
+
+            _successMessage = $"Pricing file uploaded successfully! Imported {parseResult.Entries.Count} model pricing definitions.";
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Import failed: {ex.Message}";
+        }
+    }
+}
