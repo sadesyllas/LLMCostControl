@@ -32,3 +32,6 @@
    enum, interface, and every public method/property must have an XML doc
    comment (`///`) that concisely explains what it does. This applies to
    production code; test code is exempt.
+
+7. **Strictly adhere to the DRY (Don't Repeat Yourself) principle.** Do not duplicate logic, boilerplate, or query patterns across handlers, repositories, or tests. If logic or patterns are repeated, abstract them into reusable helper methods, extension methods, or shared helper classes. Avoid copy-pasting code blocks.
+
