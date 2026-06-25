@@ -39,13 +39,6 @@ public sealed class AdminCommandServiceIntegrationTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _postgres.DisposeAsync();
 
-    /// <summary>Minimal context factory backing the service with the test container's options.</summary>
-    private sealed class TestDbContextFactory(DbContextOptions<CostTrackerDbContext> options)
-        : IDbContextFactory<CostTrackerDbContext>
-    {
-        public CostTrackerDbContext CreateDbContext() => new(options);
-    }
-
     [Fact]
     public async Task Group_create_list_rename_delete_roundtrip()
     {

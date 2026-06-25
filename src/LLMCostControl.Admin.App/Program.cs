@@ -2,6 +2,7 @@ using LLMCostControl.Admin.App.Auth;
 using LLMCostControl.Admin.App.Components;
 using LLMCostControl.Admin.App.Services;
 using LLMCostControl.Infrastructure.Data;
+using LLMCostControl.Infrastructure.Pricing;
 using LLMCostControl.Observability;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -27,6 +28,14 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 
 // Admin command handlers (§12.3) — drive the shared repositories, never grains.
 builder.Services.AddScoped<IAdminCommandService, AdminCommandService>();
+builder.Services.AddScoped<IAdminQueryService, AdminQueryService>();
+
+// Pricing-file upload (§12.3) reuses the shared import path (M14): write to
+// PostgreSQL via DbPricingWriter, but with a no-op stream publisher since the
+// admin app does not host Orleans.
+builder.Services.AddScoped<IPricingWriter, DbPricingWriter>();
+builder.Services.AddSingleton<IPricingUpdatePublisher, NoOpPricingUpdatePublisher>();
+builder.Services.AddScoped<PricingImportService>();
 
 // EntraID (Azure AD) OpenID Connect sign-in (§12.2). The admin app's auth is
 // completely independent of the tracker's gateway token; it never accepts that

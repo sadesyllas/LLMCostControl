@@ -1,0 +1,106 @@
+@page "/reports"
+@rendermode InteractiveServer
+@attribute [Authorize(Policy = AdminAuthorization.ReadOnlyPolicy)]
+@inject IAdminQueryService Query
+
+<PageTitle>Reports</PageTitle>
+
+<h1>Reports</h1>
+
+<section class="mb-4">
+    <h2>Caller budget &amp; spend (current period)</h2>
+    <div class="input-group mb-3" style="max-width: 480px;">
+        <input class="form-control" placeholder="caller@@example.com"
+               data-testid="caller-input" @bind="_callerId" />
+        <button class="btn btn-primary" data-testid="lookup-caller" @onclick="LookupAsync">Look up</button>
+    </div>
+
+    @if (_summary is not null)
+    {
+        <table class="table" data-testid="caller-summary" style="max-width: 640px;">
+            <tbody>
+                <tr><th>Budget source</th><td data-testid="budget-source">@_summary.EffectiveBudget.Source</td></tr>
+                <tr><th>Effective budget</th><td data-testid="effective-budget">@(_summary.EffectiveBudget.Amount?.ToString() ?? "none")</td></tr>
+                <tr><th>Running spend</th><td data-testid="running-spend">@_summary.RunningSpend</td></tr>
+                <tr><th>Remaining</th><td data-testid="remaining">@(_summary.Remaining?.ToString() ?? "n/a")</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Recent usage</h3>
+        @if (_usage.Count == 0)
+        {
+            <p data-testid="no-usage">No usage recorded this period.</p>
+        }
+        else
+        {
+            <table class="table table-sm">
+                <thead><tr><th>When</th><th>Model</th><th>Cost</th></tr></thead>
+                <tbody>
+                    @foreach (var evt in _usage)
+                    {
+                        <tr data-testid="usage-row">
+                            <td>@evt.CapturedAt.UtcDateTime.ToString("u")</td>
+                            <td>@evt.Model</td>
+                            <td>@evt.CostAmount.ToString("F4") @evt.CostCurrency</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+</section>
+
+<section class="mb-4">
+    <h2>Pricing</h2>
+    @if (_pricing.Count == 0)
+    {
+        <p data-testid="no-pricing">No pricing loaded.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr><th>Provider</th><th>Model</th><th>Input</th><th>Output</th><th>Cache read</th><th>Fetched</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var price in _pricing)
+                {
+                    <tr data-testid="pricing-row">
+                        <td>@price.Provider</td>
+                        <td data-testid="pricing-model">@price.Model</td>
+                        <td>@price.Prices.Input</td>
+                        <td>@price.Prices.Output</td>
+                        <td>@(price.Prices.CacheRead?.ToString() ?? "—")</td>
+                        <td>@price.FetchedAt.UtcDateTime.ToString("u")</td>
+                        <td>
+                            @if (price.IsStale)
+                            {
+                                <span class="badge bg-warning text-dark" data-testid="stale-badge">Stale</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success" data-testid="fresh-badge">Fresh</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private string _callerId = string.Empty;
+    private CallerBudgetSummary? _summary;
+    private IReadOnlyList<UsageEvent> _usage = [];
+    private IReadOnlyList<ModelPricing> _pricing = [];
+
+    protected override async Task OnInitializedAsync()
+        => _pricing = await Query.GetPricingAsync();
+
+    private async Task LookupAsync()
+    {
+        _summary = await Query.GetCallerSummaryAsync(_callerId);
+        _usage = await Query.GetRecentUsageAsync(_callerId);
+    }
+}

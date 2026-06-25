@@ -1,0 +1,43 @@
+@page "/pricing"
+@rendermode InteractiveServer
+@attribute [Authorize(Policy = AdminAuthorization.AdminPolicy)]
+@inject PricingImportService Importer
+
+<PageTitle>Pricing upload</PageTitle>
+
+<h1>Pricing file upload</h1>
+
+<p>Paste a canonical pricing file (JSON, §8.5). It is validated and imported via
+the same shared write path as the tracker's localhost import.</p>
+
+<textarea class="form-control mb-2" rows="12" data-testid="pricing-content" @bind="_content"></textarea>
+<button class="btn btn-primary" data-testid="import-pricing" @onclick="ImportAsync">Import</button>
+
+@if (_result is not null)
+{
+    @if (_result.Success)
+    {
+        <div class="alert alert-success mt-3" data-testid="import-success">
+            Imported @_result.ImportedModelCount model(s) for: @string.Join(", ", _result.AffectedProviders)
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-danger mt-3" data-testid="import-errors">
+            <p>The file was rejected; nothing was written:</p>
+            <ul>
+                @foreach (var error in _result.Errors)
+                {
+                    <li data-testid="import-error">@error</li>
+                }
+            </ul>
+        </div>
+    }
+}
+
+@code {
+    private string _content = string.Empty;
+    private PricingImportResult? _result;
+
+    private async Task ImportAsync() => _result = await Importer.ImportAsync(_content);
+}

@@ -23,11 +23,16 @@
             </div>
         </AuthorizeView>
 
-        @* Administrative commands — visible to the Admin role only (§12.3, M17). *@
+        @* Administrative commands — visible to the Admin role only (§12.3, M17/M18). *@
         <AuthorizeView Roles="@AdminAuthorization.AdminRole" Context="adminContext">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="administration" data-testid="admin-nav-link">
                     <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Administration
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="pricing" data-testid="pricing-nav-link">
+                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Pricing
                 </NavLink>
             </div>
         </AuthorizeView>
