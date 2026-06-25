@@ -2,6 +2,7 @@ using LLMCostControl.Admin.App.Auth;
 using LLMCostControl.Admin.App.Components;
 using LLMCostControl.Admin.App.Services;
 using LLMCostControl.Infrastructure.Data;
+using LLMCostControl.Infrastructure.Pricing;
 using LLMCostControl.Infrastructure.Repositories;
 using LLMCostControl.Observability;
 using Microsoft.AspNetCore.Authentication;
@@ -54,17 +55,33 @@ builder.Services.AddAuthorization(options =>
         policy.RequireRole(AppRoles.Admin, AppRoles.ReadOnly));
 });
 
-// Postgres via shared repositories (§12.1, M17).
+// Postgres via shared repositories (§12.1, M17, M18).
 var dbConnStr = builder.Configuration["Database:ConnectionString"];
 if (!string.IsNullOrWhiteSpace(dbConnStr))
 {
     builder.Services.AddDbContext<CostTrackerDbContext>(opts =>
         opts.UseNpgsql(dbConnStr));
+    // Also register the factory (needed by ModelPricingWriter / IPricingImportService).
+    builder.Services.AddDbContextFactory<CostTrackerDbContext>(opts =>
+        opts.UseNpgsql(dbConnStr));
+
+    // M17: admin CRUD repositories + service
     builder.Services.AddScoped<GroupRepository>();
     builder.Services.AddScoped<GroupMembershipRepository>();
     builder.Services.AddScoped<GroupBudgetRepository>();
     builder.Services.AddScoped<UserBudgetOverrideRepository>();
     builder.Services.AddScoped<IGroupAdminService, GroupAdminService>();
+
+    // M18: read-only views
+    builder.Services.AddScoped<BudgetResolutionRepository>();
+    builder.Services.AddScoped<UsageEventRepository>();
+    builder.Services.AddScoped<ModelPricingRepository>();
+    builder.Services.AddScoped<IAdminReadService, AdminReadService>();
+
+    // M18: pricing file import (no-op publisher since Admin.App has no Orleans)
+    builder.Services.AddSingleton<IPricingStoreWriter, ModelPricingWriter>();
+    builder.Services.AddSingleton<IPricingUpdatePublisher, NullPricingPublisher>();
+    builder.Services.AddSingleton<IPricingImportService, PricingImportService>();
 }
 
 builder.Services.AddRazorComponents()

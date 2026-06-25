@@ -1,0 +1,128 @@
+@page "/Admin/Pricing"
+@attribute [Authorize(Policy = AppRoles.AdminPolicy)]
+@inject IAdminReadService ReadService
+@inject IPricingImportService ImportService
+@using LLMCostControl.Admin.App.Services
+@using LLMCostControl.Infrastructure.Pricing
+
+<PageTitle>Pricing Admin</PageTitle>
+
+<h1 id="pricing-heading">Pricing</h1>
+
+<!-- Current pricing table -->
+<h5>Current Pricing</h5>
+<button class="btn btn-outline-secondary btn-sm mb-2" @onclick="LoadPricingAsync"
+        id="refresh-pricing-btn">
+    Refresh
+</button>
+
+@if (_pricing.Count == 0)
+{
+    <p class="text-muted" id="no-pricing">No pricing data found.</p>
+}
+else
+{
+    <table class="table table-bordered table-sm" id="pricing-table">
+        <thead>
+            <tr>
+                <th>Provider</th>
+                <th>Model</th>
+                <th>Input</th>
+                <th>Output</th>
+                <th>CacheRead</th>
+                <th>Fetched</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in _pricing)
+            {
+                <tr>
+                    <td>@p.Provider</td>
+                    <td>@p.Model</td>
+                    <td>@p.Prices.Input.ToString("F2")</td>
+                    <td>@p.Prices.Output.ToString("F2")</td>
+                    <td>@(p.Prices.CacheRead?.ToString("F2") ?? "—")</td>
+                    <td>@p.FetchedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        @if (p.IsStale)
+                        {
+                            <span class="badge bg-warning text-dark badge-stale" id="stale-@p.Model">Stale</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">Fresh</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<hr />
+
+<!-- Pricing file upload -->
+<h5>Import Pricing File</h5>
+<p class="text-muted">Paste a valid JSON pricing file (§8.5 schema) and click Import.</p>
+<textarea class="form-control mb-2" rows="8" @bind="_uploadJson"
+          id="pricing-json-input" placeholder='{ "generatedAt": "...", ... }' />
+
+<button class="btn btn-primary" @onclick="ImportAsync" id="import-pricing-btn">
+    Import
+</button>
+
+@if (_uploadErrors.Count > 0)
+{
+    <div class="alert alert-danger mt-2" id="upload-errors">
+        <ul class="mb-0">
+            @foreach (var err in _uploadErrors)
+            {
+                <li>@err</li>
+            }
+        </ul>
+    </div>
+}
+@if (_importedCount.HasValue)
+{
+    <div class="alert alert-success mt-2" id="upload-success">
+        Successfully imported @_importedCount model pricing entries.
+    </div>
+}
+
+@code {
+    private IReadOnlyList<LLMCostControl.Domain.Pricing.ModelPricing> _pricing = [];
+    private string _uploadJson = string.Empty;
+    private IReadOnlyList<string> _uploadErrors = [];
+    private int? _importedCount;
+
+    protected override async Task OnInitializedAsync() => await LoadPricingAsync();
+
+    private async Task LoadPricingAsync()
+        => _pricing = await ReadService.GetAllPricingAsync();
+
+    private async Task ImportAsync()
+    {
+        _uploadErrors = [];
+        _importedCount = null;
+
+        if (string.IsNullOrWhiteSpace(_uploadJson))
+        {
+            _uploadErrors = ["Pricing file content is required."];
+            return;
+        }
+
+        var result = await ImportService.ImportAsync(_uploadJson);
+
+        if (result.IsSuccess)
+        {
+            _importedCount = result.ImportedCount;
+            _uploadJson = string.Empty;
+            await LoadPricingAsync();
+        }
+        else
+        {
+            _uploadErrors = result.Errors;
+        }
+    }
+}

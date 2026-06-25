@@ -1,9 +1,121 @@
 @page "/Reports"
 @attribute [Authorize(Policy = AppRoles.ReadOnlyPolicy)]
+@inject IAdminReadService ReadService
+@using LLMCostControl.Admin.App.Services
+@using LLMCostControl.Domain.Budgets
+@using LLMCostControl.Domain.Common
+@using LLMCostControl.Domain.Usage
 
 <PageTitle>Reports</PageTitle>
 
 <h1 id="reports-heading">Reports</h1>
 
-<p>Effective budgets, running spend per caller, pricing, and usage events
-   will appear here (M18).</p>
+<!-- Caller budget summary -->
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Caller Budget Summary</h5>
+        <div class="input-group mb-3">
+            <input type="text" class="form-control" placeholder="caller@example.com"
+                   @bind="_callerId" id="caller-lookup-input" />
+            <button class="btn btn-secondary" @onclick="LookupCallerAsync" id="caller-lookup-btn">
+                Look up
+            </button>
+        </div>
+
+        @if (_callerError is not null)
+        {
+            <div class="alert alert-danger" id="caller-error">@_callerError</div>
+        }
+        @if (_callerSummary is not null)
+        {
+            <table class="table table-sm" id="caller-summary-table">
+                <tbody>
+                    <tr>
+                        <th>Effective Budget</th>
+                        <td id="effective-budget">
+                            @if (_callerSummary.EffectiveBudget.HasBudget)
+                            {
+                                @($"{_callerSummary.EffectiveBudget.Amount!.Amount:F2} {_callerSummary.EffectiveBudget.Amount.Currency}")
+                                @(" (") @_callerSummary.EffectiveBudget.Source @(")")
+                            }
+                            else
+                            {
+                                <em class="text-muted">No budget set</em>
+                            }
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Running Spend</th>
+                        <td id="running-spend">
+                            @_callerSummary.RunningSpend.ToString("F4") @_callerSummary.Currency
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Remaining</th>
+                        <td id="remaining">
+                            @_callerSummary.Remaining.ToString("F4") @_callerSummary.Currency
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Recent usage events -->
+            <h6>Recent Usage Events</h6>
+            @if (_recentEvents.Count == 0)
+            {
+                <em class="text-muted" id="no-events">No usage events this period.</em>
+            }
+            else
+            {
+                <table class="table table-sm table-striped" id="events-table">
+                    <thead>
+                        <tr>
+                            <th>When</th>
+                            <th>Model</th>
+                            <th>Input</th>
+                            <th>Output</th>
+                            <th>Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var evt in _recentEvents)
+                        {
+                            <tr>
+                                <td>@evt.CapturedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@evt.Model</td>
+                                <td>@evt.TokensInput</td>
+                                <td>@evt.TokensOutput</td>
+                                <td>@($"{evt.CostAmount:F4} {evt.CostCurrency}")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private string _callerId = string.Empty;
+    private CallerBudgetSummary? _callerSummary;
+    private IReadOnlyList<UsageEvent> _recentEvents = [];
+    private string? _callerError;
+    private BudgetPeriod _period = BudgetPeriod.FromDate(DateTimeOffset.UtcNow);
+
+    private async Task LookupCallerAsync()
+    {
+        _callerError = null;
+        _callerSummary = null;
+        _recentEvents = [];
+        if (string.IsNullOrWhiteSpace(_callerId)) return;
+        try
+        {
+            _callerSummary = await ReadService.GetCallerSummaryAsync(_callerId.Trim(), _period);
+            _recentEvents = await ReadService.GetRecentEventsAsync(_callerId.Trim(), _period);
+        }
+        catch (Exception ex)
+        {
+            _callerError = ex.Message;
+        }
+    }
+}

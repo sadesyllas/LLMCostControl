@@ -9,7 +9,7 @@ namespace LLMCostControl.Infrastructure.Pricing;
 /// (M18). Persists via <see cref="IPricingStoreWriter"/> and publishes
 /// pricing-updated stream events so pricing grains refresh immediately.
 /// </summary>
-public sealed class PricingImportService
+public sealed class PricingImportService : IPricingImportService
 {
     private readonly IPricingStoreWriter _writer;
     private readonly IPricingUpdatePublisher _publisher;
