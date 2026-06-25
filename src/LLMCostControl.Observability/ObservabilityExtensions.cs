@@ -53,6 +53,12 @@ public static class ObservabilityExtensions
                     };
                 });
             }
+
+            // Additional sinks registered in DI (e.g. an in-memory sink in tests).
+            foreach (var sink in services.GetServices<Serilog.Core.ILogEventSink>())
+            {
+                loggerConfig.WriteTo.Sink(sink);
+            }
         });
     }
 
