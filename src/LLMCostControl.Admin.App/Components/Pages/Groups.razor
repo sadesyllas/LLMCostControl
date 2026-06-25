@@ -1,0 +1,476 @@
+@page "/groups"
+@attribute [Authorize]
+@inject IDbContextFactory<CostTrackerDbContext> DbFactory
+@using LLMCostControl.Domain.Budgets
+@using LLMCostControl.Domain.Common
+@using LLMCostControl.Infrastructure.Data
+@using LLMCostControl.Infrastructure.Repositories
+@using Microsoft.EntityFrameworkCore
+
+<div class="admin-container">
+    <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1">Manage Groups</h1>
+            <p class="text-muted mb-0">Create groups, set budgets, and assign members for the current period: <strong>@_currentPeriod</strong></p>
+        </div>
+        <div>
+            <span class="badge bg-secondary p-2">Period: @_currentPeriod</span>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_globalErrorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible mb-4 shadow-sm" role="alert">
+            <strong>Error:</strong> @_globalErrorMessage
+            <button type="button" class="btn-close" @onclick="() => _globalErrorMessage = null" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_globalSuccessMessage))
+    {
+        <div class="alert alert-success alert-dismissible mb-4 shadow-sm" role="alert">
+            <strong>Success:</strong> @_globalSuccessMessage
+            <button type="button" class="btn-close" @onclick="() => _globalSuccessMessage = null" aria-label="Close"></button>
+        </div>
+    }
+
+    <AuthorizeView Roles="CostTracker.Admin">
+        <Authorized>
+            <div class="card shadow-sm border-0 mb-4 bg-light">
+                <div class="card-body">
+                    <h2 class="h5 card-title mb-3">Create New Group</h2>
+                    <form @onsubmit="CreateGroupAsync" @onsubmit:preventDefault class="row g-3 align-items-center">
+                        <div class="col-md-8">
+                            <label for="newGroupName" class="visually-hidden">Group Name</label>
+                            <input type="text" id="newGroupName" class="form-control py-2" placeholder="e.g. engineering-team" @bind="_newGroupName" />
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-primary py-2 w-100" id="btn-create-group">Create Group</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+
+    @if (_groups == null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading groups...</span>
+            </div>
+        </div>
+    }
+    else if (!_groups.Any())
+    {
+        <div class="text-center py-5 card border-0 shadow-sm">
+            <div class="card-body">
+                <p class="text-muted mb-0">No groups found. Create a group to get started.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            @foreach (var group in _groups)
+            {
+                <div class="col-12" id="group-@group.Id">
+                    <div class="card shadow-sm border-0 group-detail-card">
+                        <div class="card-body p-4">
+                            <!-- Group Title & Actions -->
+                            <div class="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
+                                <div>
+                                    @if (group.IsEditing)
+                                    {
+                                        <div class="d-flex gap-2 align-items-center">
+                                            <input type="text" class="form-control form-control-sm edit-group-name-input" @bind="group.EditName" />
+                                            <button class="btn btn-sm btn-success btn-save-rename" @onclick="() => RenameGroupAsync(group)">Save</button>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => group.IsEditing = false">Cancel</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <h3 class="h4 mb-0 group-name-title">@group.Name</h3>
+                                        <small class="text-muted">Created: @group.CreatedAt.ToString("g")</small>
+                                    }
+                                </div>
+                                <AuthorizeView Roles="CostTracker.Admin">
+                                    <Authorized>
+                                        <div class="d-flex gap-2">
+                                            @if (!group.IsEditing)
+                                            {
+                                                <button class="btn btn-sm btn-outline-primary btn-rename-group" @onclick="() => { group.IsEditing = true; group.EditName = group.Name; }">Rename</button>
+                                            }
+                                            <button class="btn btn-sm btn-outline-danger btn-delete-group" @onclick="() => DeleteGroupAsync(group.Id)">Delete</button>
+                                        </div>
+                                    </Authorized>
+                                </AuthorizeView>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(group.ErrorMessage))
+                            {
+                                <div class="alert alert-danger py-2 mb-3 small error-message-block" role="alert">
+                                    @group.ErrorMessage
+                                </div>
+                            }
+
+                            <div class="row g-4">
+                                <!-- Budget Section -->
+                                <div class="col-md-6">
+                                    <div class="p-3 bg-light rounded-3 h-100">
+                                        <h4 class="h6 mb-3 text-uppercase text-secondary tracking-wider font-semibold">Monthly Budget</h4>
+                                        <div class="mb-3 budget-amount-display">
+                                            @if (group.CurrentBudget != null)
+                                            {
+                                                <div class="d-flex align-items-baseline gap-2">
+                                                    <span class="h3 mb-0 text-primary font-bold">@group.CurrentBudget.Amount.Amount.ToString("F2")</span>
+                                                    <span class="text-muted">@group.CurrentBudget.Amount.Currency</span>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted italic no-budget-message">No budget set for current period.</span>
+                                            }
+                                        </div>
+
+                                        <AuthorizeView Roles="CostTracker.Admin">
+                                            <Authorized>
+                                                <div class="border-top pt-3">
+                                                    <div class="row g-2">
+                                                        <div class="col-7">
+                                                            <input type="number" class="form-control form-control-sm input-budget-amount" placeholder="Amount" @bind="group.NewBudgetAmount" min="0" step="0.01" />
+                                                        </div>
+                                                        <div class="col-5">
+                                                            <select class="form-select form-select-sm select-budget-currency" @bind="group.NewBudgetCurrency">
+                                                                <option value="USD">USD</option>
+                                                                <option value="EUR">EUR</option>
+                                                                <option value="GBP">GBP</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <div class="d-flex gap-2 mt-2">
+                                                        <button class="btn btn-sm btn-primary w-100 btn-set-budget" @onclick="() => UpdateBudgetAsync(group)">Set Budget</button>
+                                                        @if (group.CurrentBudget != null)
+                                                        {
+                                                            <button class="btn btn-sm btn-outline-danger btn-clear-budget" @onclick="() => ClearBudgetAsync(group)">Clear</button>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </Authorized>
+                                        </AuthorizeView>
+                                    </div>
+                                </div>
+
+                                <!-- Members Section -->
+                                <div class="col-md-6">
+                                    <div class="p-3 bg-light rounded-3 h-100 d-flex flex-column">
+                                        <h4 class="h6 mb-3 text-uppercase text-secondary tracking-wider font-semibold">Group Members</h4>
+                                        
+                                        <div class="flex-grow-1 mb-3">
+                                            @if (group.Members == null || !group.Members.Any())
+                                            {
+                                                <p class="text-muted small mb-0 italic no-members-message">No members assigned to this group.</p>
+                                            }
+                                            else
+                                            {
+                                                <ul class="list-group list-group-flush bg-transparent members-list">
+                                                    @foreach (var member in group.Members)
+                                                    {
+                                                        <li class="list-group-item d-flex justify-content-between align-items-center bg-transparent px-0 py-2 member-item">
+                                                            <span class="small font-mono text-dark member-email">@member.CallerId.Value</span>
+                                                            <AuthorizeView Roles="CostTracker.Admin">
+                                                                <Authorized>
+                                                                    <button type="button" class="btn-close btn-close-small btn-remove-member" @onclick="() => RemoveMemberAsync(group.Id, member.CallerId.Value, group)" aria-label="Remove member"></button>
+                                                                </Authorized>
+                                                            </AuthorizeView>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            }
+                                        </div>
+
+                                        <AuthorizeView Roles="CostTracker.Admin">
+                                            <Authorized>
+                                                <div class="border-top pt-3">
+                                                    <form @onsubmit="() => AddMemberAsync(group)" @onsubmit:preventDefault class="d-flex gap-2">
+                                                        <input type="text" class="form-control form-control-sm input-member-email" placeholder="Member email" @bind="group.NewMemberEmail" />
+                                                        <button type="submit" class="btn btn-sm btn-primary btn-add-member">Add</button>
+                                                    </form>
+                                                </div>
+                                            </Authorized>
+                                        </AuthorizeView>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
+
+    private List<GroupViewModel> _groups = new();
+    private string _newGroupName = string.Empty;
+    private string? _globalErrorMessage;
+    private string? _globalSuccessMessage;
+    private BudgetPeriod _currentPeriod;
+    private bool _isAdmin;
+
+    /// <summary>
+    /// UI-specific representation of a group to manage component state.
+    /// </summary>
+    public sealed class GroupViewModel
+    {
+        public Guid Id { get; init; }
+        public string Name { get; set; } = string.Empty;
+        public DateTimeOffset CreatedAt { get; init; }
+        public GroupBudget? CurrentBudget { get; set; }
+        public List<GroupMembership> Members { get; set; } = new();
+
+        // UI states
+        public bool IsEditing { get; set; }
+        public string EditName { get; set; } = string.Empty;
+        public string NewMemberEmail { get; set; } = string.Empty;
+        public decimal? NewBudgetAmount { get; set; }
+        public string NewBudgetCurrency { get; set; } = "USD";
+        public string? ErrorMessage { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentPeriod = BudgetPeriod.Current();
+        var authState = await AuthStateTask;
+        _isAdmin = authState.User.IsInRole("CostTracker.Admin");
+
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var groupRepo = new GroupRepository(context);
+            var budgetRepo = new GroupBudgetRepository(context);
+            var membershipRepo = new GroupMembershipRepository(context);
+
+            var domainGroups = await groupRepo.GetAllAsync();
+            var viewModels = new List<GroupViewModel>();
+
+            foreach (var g in domainGroups)
+            {
+                var budget = await budgetRepo.GetAsync(g.Id, _currentPeriod);
+                var memberships = await membershipRepo.GetMembersAsync(g.Id);
+
+                viewModels.Add(new GroupViewModel
+                {
+                    Id = g.Id,
+                    Name = g.Name,
+                    CreatedAt = g.CreatedAt,
+                    CurrentBudget = budget,
+                    Members = memberships,
+                    EditName = g.Name,
+                    NewBudgetAmount = budget?.Amount.Amount,
+                    NewBudgetCurrency = budget?.Amount.Currency ?? "USD"
+                });
+            }
+
+            _groups = viewModels.OrderBy(x => x.Name).ToList();
+        }
+        catch (Exception ex)
+        {
+            _globalErrorMessage = $"Failed to load groups: {ex.Message}";
+        }
+    }
+
+    private async Task CreateGroupAsync()
+    {
+        if (!_isAdmin) return;
+        if (string.IsNullOrWhiteSpace(_newGroupName))
+        {
+            _globalErrorMessage = "Group name cannot be empty.";
+            return;
+        }
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var groupRepo = new GroupRepository(context);
+
+            var newGroup = Group.Create(_newGroupName);
+            await groupRepo.AddAsync(newGroup);
+
+            _newGroupName = string.Empty;
+            _globalErrorMessage = null;
+            _globalSuccessMessage = $"Group '{newGroup.Name}' created successfully.";
+
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _globalErrorMessage = $"Failed to create group: {ex.Message}";
+        }
+    }
+
+    private async Task RenameGroupAsync(GroupViewModel model)
+    {
+        if (!_isAdmin) return;
+        if (string.IsNullOrWhiteSpace(model.EditName))
+        {
+            model.ErrorMessage = "Group name cannot be empty.";
+            return;
+        }
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var groupRepo = new GroupRepository(context);
+            var domainGroup = await groupRepo.GetByIdAsync(model.Id);
+
+            if (domainGroup is not null)
+            {
+                domainGroup.Name = model.EditName.Trim();
+                await groupRepo.UpdateAsync(domainGroup);
+                model.IsEditing = false;
+                model.ErrorMessage = null;
+                await LoadDataAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            model.ErrorMessage = $"Failed to rename group: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteGroupAsync(Guid id)
+    {
+        if (!_isAdmin) return;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            await using var tx = await context.Database.BeginTransactionAsync();
+
+            // Cascade delete associations in code to keep DB clean
+            await context.GroupBudgets.Where(b => b.GroupId == id).ExecuteDeleteAsync();
+            await context.GroupMemberships.Where(m => m.GroupId == id).ExecuteDeleteAsync();
+            await context.Groups.Where(g => g.Id == id).ExecuteDeleteAsync();
+
+            await tx.CommitAsync();
+            _globalSuccessMessage = "Group deleted successfully.";
+            _globalErrorMessage = null;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _globalErrorMessage = $"Failed to delete group: {ex.Message}";
+        }
+    }
+
+    private async Task UpdateBudgetAsync(GroupViewModel model)
+    {
+        if (!_isAdmin) return;
+        if (model.NewBudgetAmount is null or < 0m)
+        {
+            model.ErrorMessage = "Budget amount must be zero or positive.";
+            return;
+        }
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var budgetRepo = new GroupBudgetRepository(context);
+
+            var money = new Money(model.NewBudgetAmount.Value, model.NewBudgetCurrency);
+            var budget = GroupBudget.Create(model.Id, money, _currentPeriod);
+
+            await budgetRepo.UpsertAsync(budget);
+            model.ErrorMessage = null;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            model.ErrorMessage = $"Failed to update budget: {ex.Message}";
+        }
+    }
+
+    private async Task ClearBudgetAsync(GroupViewModel model)
+    {
+        if (!_isAdmin) return;
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var budgetRepo = new GroupBudgetRepository(context);
+
+            await budgetRepo.DeleteAsync(model.Id, _currentPeriod);
+            model.NewBudgetAmount = null;
+            model.ErrorMessage = null;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            model.ErrorMessage = $"Failed to clear budget: {ex.Message}";
+        }
+    }
+
+    private async Task AddMemberAsync(GroupViewModel model)
+    {
+        if (!_isAdmin) return;
+        if (string.IsNullOrWhiteSpace(model.NewMemberEmail))
+        {
+            model.ErrorMessage = "Member email cannot be empty.";
+            return;
+        }
+
+        try
+        {
+            var callerId = CallerId.From(model.NewMemberEmail.Trim());
+
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var membershipRepo = new GroupMembershipRepository(context);
+
+            var existing = await context.GroupMemberships
+                .AnyAsync(m => m.GroupId == model.Id && m.CallerId == callerId);
+
+            if (existing)
+            {
+                model.ErrorMessage = "User is already a member of this group.";
+                return;
+            }
+
+            var membership = GroupMembership.Create(model.Id, callerId);
+            await membershipRepo.AddAsync(membership);
+
+            model.NewMemberEmail = string.Empty;
+            model.ErrorMessage = null;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            model.ErrorMessage = $"Failed to add member: {ex.Message}";
+        }
+    }
+
+    private async Task RemoveMemberAsync(Guid groupId, string email, GroupViewModel model)
+    {
+        if (!_isAdmin) return;
+        try
+        {
+            var callerId = CallerId.From(email);
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var membershipRepo = new GroupMembershipRepository(context);
+
+            await membershipRepo.RemoveAsync(groupId, callerId);
+            model.ErrorMessage = null;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            model.ErrorMessage = $"Failed to remove member: {ex.Message}";
+        }
+    }
+}
