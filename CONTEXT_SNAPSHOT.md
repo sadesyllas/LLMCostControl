@@ -1,7 +1,7 @@
 # Context Snapshot
 
-Snapshot taken after completing milestone **M14**. This file is a quick-reference
-for resuming work on **M15** and beyond.
+Snapshot taken after completing milestone **M15**. This file is a quick-reference
+for resuming work on **M16** and beyond.
 
 ## Project Status
 
@@ -22,25 +22,25 @@ for resuming work on **M15** and beyond.
 | M12 | Auth: OAuth/JWKS validation | [x] | [x] |
 | M13 | Tracker API: check + capture endpoints | [x] | [x] |
 | M14 | Localhost pricing file import endpoint | [x] | [x] |
-| M15 | Effective-group telemetry tagging | [ ] | [ ] |
+| M15 | Effective-group telemetry tagging | [x] | [x] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | [ ] | [ ] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | [ ] | [ ] |
 | M18 | Admin app: read-only views + pricing file upload | [ ] | [ ] |
 | M19 | Contract/conformance tests + E2E local-dev verification | [ ] | [ ] |
 
-**Next milestone: M15** — Effective-group telemetry tagging (Spec ref §10.2,
-depends on M10, M11, M2).
+**Next milestone: M16** — Blazor admin app: scaffolding + EntraID auth (Spec ref
+§12.1, §12.2, depends on M4).
 
 ## Test Counts (verified green)
 
-Total: **121 tests**, all passing.
+Total: **125 tests**, all passing.
 
 | Test project | Tests |
 |--------------|------:|
 | LLMCostControl.Domain.Tests | 38 |
 | LLMCostControl.Infrastructure.Tests | 40 |
 | LLMCostControl.Grains.Tests | 24 |
-| LLMCostControl.Tracker.Api.Tests | 17 (6 auth + 7 endpoint + 3 import + 1 smoke) |
+| LLMCostControl.Tracker.Api.Tests | 21 (6 auth + 7 endpoint + 3 import + 4 telemetry + 1 smoke) |
 | LLMCostControl.Observability.Tests | 1 |
 | LLMCostControl.Admin.App.Tests | 1 |
 
@@ -144,6 +144,14 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
     `Connection.RemoteIpAddress` (null or non-loopback → 404). Tests drive it over
     the in-memory TestServer via an `IStartupFilter` that sets `RemoteIpAddress`
     from an `X-Test-RemoteIp` header (the test server leaves it unset otherwise).
+19. **M15 effective-group tags are applied at the API layer, not the grain.** The
+    grain resolves `effective_group`/`budget_source` at decision time and returns
+    them on `BudgetCheckResult`/`UsageCaptureResult`; the endpoint then tags
+    `Activity.Current` (the request span), records the metric with those tags, and
+    pushes them into the Serilog `LogContext` for the request — because the
+    request's activity/log context lives at the API layer, not in the silo. Tag
+    value `effective_group = "none"` (sentinel) when there is no group so the tag
+    is always present and sliceable. Keys: `effective_group`, `budget_source`.
 
 ## Key Source Files
 
@@ -201,10 +209,17 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   (`PricingImportResponse`, `PricingImportErrorResponse`)
 - `Endpoints/LocalhostOnlyEndpointFilter.cs` — `IEndpointFilter` returning 404
   for non-loopback `Connection.RemoteIpAddress` (M14, §8.3)
+- `Telemetry/TrackerTelemetry.cs` — M15/§10.2: owns the custom `Meter`
+  (`tracker.budget_checks`, `tracker.usage_captures`, `tracker.capture_cost`) +
+  `EnterEffectiveGroupScope` (tags `Activity.Current` + pushes Serilog
+  `LogContext` props `effective_group`/`budget_source`). `ServiceName` const is
+  the meter/source/OTel service name used in `Program.cs`
 
 ### Observability (`src/LLMCostControl.Observability/`)
 - `ObservabilityExtensions.cs` — Serilog + OTel SDK wiring (logs→Loki,
-  traces→Tempo, metrics→Prometheus)
+  traces→Tempo, metrics→Prometheus). `UseObservability` also adds any
+  DI-registered `Serilog.Core.ILogEventSink` (M15: lets tests capture log
+  events in-memory; no-op in prod)
 
 ## Key Test Files
 
@@ -227,6 +242,13 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   (valid→persist+publish+grain-visible, invalid→400+no-write, non-localhost→404)
   + `PricingImportApiFactory`, `StubPricingWriter`, `RecordingPricingPublisher`,
   `TestRemoteIpStartupFilter` (middleware setting `RemoteIpAddress` from a header)
+- `Tracker.Api.Tests/EffectiveGroupTelemetryTests.cs` — 4 M15 tests
+  (check for Group/UserOverride/None + a capture) asserting span+metric+log all
+  carry `effective_group`/`budget_source`. `TelemetryApiFactory` wires in-memory
+  OTel exporters (`ConfigureOpenTelemetryTracerProvider`/`...MeterProvider` +
+  `AddInMemoryExporter`) and an `InMemoryLogSink` (`ILogEventSink`)
+- `Tracker.Api.Tests/AssemblyInfo.cs` — `DisableTestParallelization = true`
+  (in-memory OTel/Serilog capture is process-global; classes must not overlap)
 - `Tracker.Api.Tests/TestStubs.cs` — simpler stub stores for API integration
   (`StubPricingStore` now has `ReplaceProvider`/`Clear`/`Count` for import tests)
 - `Tracker.Api.Tests/SmokeTests.cs` — 1 smoke test
@@ -250,6 +272,9 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 ## Git History (recent)
 
 ```
+d1c0812 M15: mark milestone done and tested
+5ccb718 M15: effective-group telemetry tagging on check/capture
+392fd5d docs: update CONTEXT_SNAPSHOT.md after M14
 ebd9ee8 M14: mark milestone done and tested
 773bf0d M14: implement localhost pricing file import endpoint
 fea1c21 docs: add CONTEXT_SNAPSHOT.md after M13
