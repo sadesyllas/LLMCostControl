@@ -1,6 +1,7 @@
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions.StreamEvents;
 using LLMCostControl.Grains.Implementations;
+using LLMCostControl.Grains.Options;
 using LLMCostControl.Grains.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +24,42 @@ public static class SharedPricingStore
 }
 
 /// <summary>
+/// Shared static budget store that both the test code and the silo's DI
+/// container reference, ensuring they use the same instance.
+/// </summary>
+public static class SharedBudgetStore
+{
+    /// <summary>The single shared store instance.</summary>
+    public static StubBudgetStore Instance { get; } = new();
+}
+
+/// <summary>
+/// Shared static budget options that both the test code and the silo's DI
+/// container reference. Tests can mutate <see cref="AllowNonBudgetedUsers"/>
+/// (tests run sequentially within the assembly).
+/// </summary>
+public static class SharedBudgetOptions
+{
+    /// <summary>The single shared options instance.</summary>
+    public static BudgetGrainOptions Instance { get; } = new()
+    {
+        BudgetCacheTtl = TimeSpan.FromSeconds(1),
+        AllowNonBudgetedUsers = false,
+    };
+}
+
+/// <summary>
+/// Shared static time provider for deterministic TTL and period-rollover
+/// tests.
+/// </summary>
+public static class SharedTimeProvider
+{
+    /// <summary>The single shared time provider instance.</summary>
+    public static FakeTimeProvider Instance { get; } =
+        new(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
+}
+
+/// <summary>
 /// Shared test cluster fixture — one cluster for all grain tests.
 /// </summary>
 public sealed class GrainClusterFixture : IDisposable
@@ -34,6 +71,15 @@ public sealed class GrainClusterFixture : IDisposable
 
     /// <summary>The shared stub pricing store.</summary>
     public StubPricingStore Store => SharedPricingStore.Instance;
+
+    /// <summary>The shared stub budget store.</summary>
+    public StubBudgetStore BudgetStore => SharedBudgetStore.Instance;
+
+    /// <summary>The shared budget options.</summary>
+    public BudgetGrainOptions BudgetOptions => SharedBudgetOptions.Instance;
+
+    /// <summary>The shared fake time provider.</summary>
+    public FakeTimeProvider TimeProvider => SharedTimeProvider.Instance;
 
     /// <summary>Creates and deploys a test cluster.</summary>
     public GrainClusterFixture()
@@ -55,7 +101,8 @@ public sealed class GrainClusterFixture : IDisposable
 
 /// <summary>
 /// Test silo configurator: registers memory storage, streams, the shared
-/// <see cref="SharedPricingStore"/> instance, and the pricing cache.
+/// <see cref="SharedPricingStore"/> instance, budget store, budget options,
+/// time provider, and the pricing cache.
 /// </summary>
 public sealed class TestSiloConfigurator : ISiloConfigurator
 {
@@ -70,6 +117,11 @@ public sealed class TestSiloConfigurator : ISiloConfigurator
             services.AddSingleton(SharedPricingStore.Instance);
             services.AddSingleton<IPricingStore>(SharedPricingStore.Instance);
             services.AddSingleton<IPricingCache, PricingCache>();
+
+            services.AddSingleton(SharedBudgetStore.Instance);
+            services.AddSingleton<IBudgetStore>(SharedBudgetStore.Instance);
+            services.AddSingleton(SharedBudgetOptions.Instance);
+            services.AddSingleton<TimeProvider>(SharedTimeProvider.Instance);
         });
     }
 }
@@ -88,7 +140,8 @@ public sealed class TestClientConfigurator : IClientBuilderConfigurator
 
 /// <summary>
 /// Base class for all grain tests. Uses a shared <see cref="GrainClusterFixture"/>.
-/// Each test should use unique model names to avoid cache interference.
+/// Each test should use unique caller ids / model names to avoid cache
+/// interference.
 /// </summary>
 public abstract class GrainTestBase : IClassFixture<GrainClusterFixture>
 {
@@ -102,6 +155,15 @@ public abstract class GrainTestBase : IClassFixture<GrainClusterFixture>
 
     /// <summary>The shared stub pricing store.</summary>
     protected StubPricingStore Store => _fixture.Store;
+
+    /// <summary>The shared stub budget store.</summary>
+    protected StubBudgetStore BudgetStore => _fixture.BudgetStore;
+
+    /// <summary>The shared budget options.</summary>
+    protected BudgetGrainOptions BudgetOptions => _fixture.BudgetOptions;
+
+    /// <summary>The shared fake time provider.</summary>
+    protected FakeTimeProvider TimeProvider => _fixture.TimeProvider;
 
     /// <summary>Creates the test base with the shared fixture.</summary>
     protected GrainTestBase(GrainClusterFixture fixture)

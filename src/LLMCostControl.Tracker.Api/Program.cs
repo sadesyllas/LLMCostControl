@@ -1,4 +1,5 @@
 using LLMCostControl.Grains.Implementations;
+using LLMCostControl.Grains.Options;
 using LLMCostControl.Grains.Publishers;
 using LLMCostControl.Grains.Storage;
 using LLMCostControl.Infrastructure.Data;
@@ -22,6 +23,9 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddScoped<IPricingStore, PricingStore>();
+builder.Services.AddScoped<IBudgetStore, BudgetStore>();
+builder.Services.Configure<BudgetGrainOptions>(builder.Configuration.GetSection("BudgetGrain"));
+builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Host.UseOrleans(silo =>
 {

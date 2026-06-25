@@ -1,3 +1,5 @@
+using LLMCostControl.Domain.Budgets;
+using LLMCostControl.Domain.Common;
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions;
 using LLMostControl.Grains.Tests;
@@ -12,6 +14,8 @@ public class SiloBootstrapTests : GrainTestBase
     [Fact]
     public async Task Silo_boots_and_grain_round_trip_succeeds()
     {
+        BudgetStore.SetBudget("test@example.com",
+            EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("test@example.com");
 
         var result = await grain.CheckBudgetAsync();
@@ -38,6 +42,8 @@ public class SiloBootstrapTests : GrainTestBase
     [Fact]
     public async Task UserBudgetGrain_capture_returns_result()
     {
+        BudgetStore.SetBudget("capture@example.com",
+            EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("capture@example.com");
 
         var result = await grain.CaptureUsageAsync(new UsageCaptureRequest
@@ -51,7 +57,7 @@ public class SiloBootstrapTests : GrainTestBase
 
         result.Should().NotBeNull();
         result.CallerId.Should().Be("capture@example.com");
-        result.CostAmount.Should().BePositive();
+        result.CostAmount.Should().Be(0m, "cost accrual is implemented in M11");
     }
 
     [Fact]
