@@ -1,3 +1,4 @@
+using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions;
 using LLMostControl.Grains.Tests;
 using Orleans.Streams;
@@ -6,6 +7,8 @@ namespace LLMCostControl.Grains.Tests;
 
 public class SiloBootstrapTests : GrainTestBase
 {
+    public SiloBootstrapTests(GrainClusterFixture fixture) : base(fixture) { }
+
     [Fact]
     public async Task Silo_boots_and_grain_round_trip_succeeds()
     {
@@ -21,6 +24,8 @@ public class SiloBootstrapTests : GrainTestBase
     [Fact]
     public async Task PricingGrain_returns_pricing()
     {
+        Store.SetPricing("gpt-4o", ModelPricing.Create(
+            Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m, 1.25m)));
         var grain = GrainFactory.GetGrain<IPricingGrain>("gpt-4o");
 
         var result = await grain.GetPricingAsync();
