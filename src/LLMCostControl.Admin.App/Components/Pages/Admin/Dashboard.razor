@@ -1,0 +1,9 @@
+@page "/Admin/Dashboard"
+@attribute [Authorize(Policy = AppRoles.AdminPolicy)]
+
+<PageTitle>Admin Dashboard</PageTitle>
+
+<h1 id="admin-dashboard-heading">Admin Dashboard</h1>
+
+<p>Welcome to the LLM Cost Control admin panel. Use the navigation to manage
+   groups, budgets, memberships, and pricing (M17 &amp; M18).</p>
