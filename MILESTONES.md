@@ -25,7 +25,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M12 | Auth: OAuth/JWKS validation | §6.1 | M0 | [x] | [x] |
 | M13 | Tracker API: check + capture endpoints | §6.2.1, §6.2.2 | M11, M12 | [x] | [x] |
 | M14 | Localhost pricing file import endpoint | §8.3 | M5, M7 | [x] | [x] |
-| M15 | Effective-group telemetry tagging | §10.2 | M10, M11, M2 | [ ] | [ ] |
+| M15 | Effective-group telemetry tagging | §10.2 | M10, M11, M2 | [x] | [x] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | §12.1, §12.2 | M4 | [ ] | [ ] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | §12.3 | M16, M4 | [ ] | [ ] |
 | M18 | Admin app: read-only views + pricing file upload | §12.3 | M17, M5 | [ ] | [ ] |
@@ -286,7 +286,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §10.2 (effective-group tagging)
 - **Depends on:** M10, M11, M2
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - Every span, metric data point, and log event produced while servicing a
     `check`/`capture` call carries `effective_group` and `budget_source`
