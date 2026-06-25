@@ -52,4 +52,10 @@ public class UserBudgetOverrideRepository
             .Where(o => o.CallerId == callerId && o.Period == period)
             .ExecuteDeleteAsync(ct);
     }
+
+    /// <summary>Returns all overrides for a specific period.</summary>
+    public Task<List<UserBudgetOverride>> GetForPeriodAsync(BudgetPeriod period, CancellationToken ct = default)
+        => _db.UserBudgetOverrides
+            .Where(o => o.Period == period)
+            .ToListAsync(ct);
 }
