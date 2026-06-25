@@ -23,7 +23,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M10 | UserBudgetGrain: budget resolution + 30 s TTL | §7, §9.1, §12.4 | M8, M4 | [x] | [x] |
 | M11 | Cost accrual + usage audit trail | §6.2.2 (cost), §9.4 | M9, M10 | [x] | [x] |
 | M12 | Auth: OAuth/JWKS validation | §6.1 | M0 | [x] | [x] |
-| M13 | Tracker API: check + capture endpoints | §6.2.1, §6.2.2 | M11, M12 | [ ] | [ ] |
+| M13 | Tracker API: check + capture endpoints | §6.2.1, §6.2.2 | M11, M12 | [x] | [x] |
 | M14 | Localhost pricing file import endpoint | §8.3 | M5, M7 | [ ] | [ ] |
 | M15 | Effective-group telemetry tagging | §10.2 | M10, M11, M2 | [ ] | [ ] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | §12.1, §12.2 | M4 | [ ] | [ ] |
@@ -253,7 +253,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §6.2.1, §6.2.2
 - **Depends on:** M11, M12
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - `POST /api/budget/check` and `POST /api/usage/capture` per the spec schemas
     (request + response + error envelopes).
