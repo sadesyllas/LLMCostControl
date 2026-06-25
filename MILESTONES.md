@@ -20,7 +20,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M7 | Pricing refresh job | §8.4 | M6 | [x] | [x] |
 | M8 | Orleans silo host + grain interfaces + storage | §9.1, §8.6 | M4 | [x] | [x] |
 | M9 | PricingGrain ([StatelessWorker] + stream sub) | §8.6 | M8, M7 | [x] | [x] |
-| M10 | UserBudgetGrain: budget resolution + 30 s TTL | §7, §9.1, §12.4 | M8, M4 | [ ] | [ ] |
+| M10 | UserBudgetGrain: budget resolution + 30 s TTL | §7, §9.1, §12.4 | M8, M4 | [x] | [x] |
 | M11 | Cost accrual + usage audit trail | §6.2.2 (cost), §9.4 | M9, M10 | [ ] | [ ] |
 | M12 | Auth: OAuth/JWKS validation | §6.1 | M0 | [ ] | [ ] |
 | M13 | Tracker API: check + capture endpoints | §6.2.1, §6.2.2 | M11, M12 | [ ] | [ ] |
@@ -208,20 +208,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §7, §9.1, §12.4
 - **Depends on:** M8, M4
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
-- **Acceptance criteria:**
-  - `UserBudgetGrain` keyed by caller id: resolves effective budget (per-user
-    override wins; else largest group budget; else none), holds running spend for
-    the current period, computes remaining.
-  - 30 s TTL cache on the effective budget (`BudgetCacheTtlSeconds`, default
-    `30`): returns cached value if fresh, else re-reads from the DB via the
-    shared repository.
-  - `AllowNonBudgetedUsers` (default `false`) → unbudgeted callers denied by
-    default; when `true`, allowed (spend still recorded, never gated).
-- **Tests:**
-  - Resolution rules (override-wins, largest-group-wins, no-budget → deny);
-    `AllowNonBudgetedUsers=true` allows; TTL re-reads after 30 s (and not
-    before); fail-closed default; period rollover resets running spend.
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 
 ## M11 — Cost accrual + usage audit trail
 
