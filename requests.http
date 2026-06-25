@@ -1,0 +1,57 @@
+### Environment Variables
+@host = http://localhost:5196
+@token = YOUR_GATEWAY_TOKEN
+
+### 1. Budget Check
+POST {{host}}/api/budget/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "alice@example.com",
+  "model": "gpt-4o"
+}
+
+### 2. Usage Capture
+POST {{host}}/api/usage/capture
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "alice@example.com",
+  "model": "gpt-4o",
+  "tokens": {
+    "input": 1234,
+    "output": 567,
+    "cacheRead": 890,
+    "cacheWrite": 0
+  },
+  "requestId": "unique-request-id-123"
+}
+
+### 3. Localhost Pricing Import (Only accessible from localhost)
+POST {{host}}/api/pricing/import
+Content-Type: application/json
+
+{
+  "generatedAt": "2026-06-24T12:00:00Z",
+  "currency": "USD",
+  "unit": "per-1M-tokens",
+  "providers": [
+    {
+      "provider": "openai",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "fetchedAt": "2026-06-24T12:00:00Z",
+          "prices": {
+            "input": 2.50,
+            "output": 10.00,
+            "cacheRead": 1.25,
+            "cacheWrite": null
+          }
+        }
+      ]
+    }
+  ]
+}
