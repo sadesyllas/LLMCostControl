@@ -1,0 +1,63 @@
+### LLM Cost Tracker — manual probing (§14.3)
+### Use with the VS Code "REST Client" extension or JetBrains HTTP client.
+### Start dependencies first:  docker compose up -d
+### Then run the Tracker API (profile "http", below) and (optionally) the Admin app.
+
+@tracker = http://localhost:5196
+@admin   = http://localhost:5280
+
+### The check/capture endpoints require a valid gateway bearer token (§6.1).
+### In local dev the Tracker validates against the configured JWKS/issuer; paste a
+### token minted by that issuer here. If GatewayAuth is not configured (no
+### JwksEndpoint), auth is disabled and the Authorization header is ignored.
+@token = PASTE_GATEWAY_JWT_HERE
+
+### 1) Pre-request budget check (§6.2.1)
+POST {{tracker}}/api/budget/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "alice@example.com",
+  "model": "gpt-4o"
+}
+
+### 2) Post-response usage capture (§6.2.2)
+###    requestId is the idempotency key — repeating the same one does not double-accrue.
+POST {{tracker}}/api/usage/capture
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "callerId": "alice@example.com",
+  "model": "gpt-4o",
+  "tokens": { "input": 1234, "output": 567, "cacheRead": 890, "cacheWrite": 0 },
+  "requestId": "11111111-1111-1111-1111-111111111111"
+}
+
+### 3) Localhost-only pricing file import (§8.3) — reachable only from the same machine,
+###    no gateway token required. Body is the canonical pricing file (§8.5).
+POST {{tracker}}/api/pricing/import
+Content-Type: application/json
+
+{
+  "generatedAt": "2026-06-25T00:00:00Z",
+  "currency": "USD",
+  "unit": "per-1M-tokens",
+  "providers": [
+    {
+      "provider": "openai",
+      "models": [
+        {
+          "model": "gpt-4o",
+          "fetchedAt": "2026-06-25T00:00:00Z",
+          "prices": { "input": 2.50, "output": 10.00, "cacheRead": 1.25, "cacheWrite": null }
+        }
+      ]
+    }
+  ]
+}
+
+### After issuing check/capture: watch traces & logs in Grafana (http://localhost:3000)
+### and Seq (http://localhost:8081), sliced by effective_group / budget_source (§10.2);
+### watch spend accrue in the Admin app's Reports view ({{admin}}/reports).
