@@ -51,4 +51,12 @@ public class GroupBudgetRepository
 
         await _db.SaveChangesAsync(ct);
     }
+
+    /// <summary>Removes a group budget for a specific period and saves.</summary>
+    public async Task DeleteAsync(Guid groupId, BudgetPeriod period, CancellationToken ct = default)
+    {
+        await _db.GroupBudgets
+            .Where(b => b.GroupId == groupId && b.Period == period)
+            .ExecuteDeleteAsync(ct);
+    }
 }

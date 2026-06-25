@@ -36,4 +36,10 @@ public class GroupMembershipRepository
             .Where(m => m.GroupId == groupId && m.CallerId == callerId)
             .ExecuteDeleteAsync(ct);
     }
+
+    /// <summary>Returns all memberships for a specific group.</summary>
+    public Task<List<GroupMembership>> GetMembersAsync(Guid groupId, CancellationToken ct = default)
+        => _db.GroupMemberships
+            .Where(m => m.GroupId == groupId)
+            .ToListAsync(ct);
 }
