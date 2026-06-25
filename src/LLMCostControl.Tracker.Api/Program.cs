@@ -1,3 +1,4 @@
+using System.Net;
 using LLMCostControl.Grains.Abstractions;
 using LLMCostControl.Grains.Implementations;
 using LLMCostControl.Grains.Options;
@@ -5,6 +6,7 @@ using LLMCostControl.Grains.Publishers;
 using LLMCostControl.Grains.Storage;
 using LLMCostControl.Infrastructure.Data;
 using LLMCostControl.Infrastructure.Pricing;
+using LLMCostControl.Infrastructure.Repositories;
 using LLMCostControl.Observability;
 using LLMCostControl.Tracker.Api.Auth;
 using LLMCostControl.Tracker.Api.Endpoints;
@@ -90,6 +92,7 @@ builder.Host.UseOrleans(silo =>
 });
 
 builder.Services.AddSingleton<IPricingUpdatePublisher, OrleansPricingPublisher>();
+builder.Services.AddHostedService<PricingStreamSubscriber>();
 
 var app = builder.Build();
 
@@ -180,4 +183,115 @@ app.MapPost("/api/usage/capture", async (
     }
 }).RequireAuthorization();
 
+// M14: Localhost pricing file import endpoint (§8.3).
+app.MapPost("/api/pricing/import", async (
+    HttpContext httpContext,
+    IDbContextFactory<CostTrackerDbContext>? contextFactory,
+    IPricingUpdatePublisher pricingPublisher,
+    CancellationToken ct) =>
+{
+    if (!IsLocalConnection(httpContext.Connection))
+    {
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    }
+
+    string json;
+    if (httpContext.Request.HasJsonContentType() || 
+        (!httpContext.Request.HasFormContentType && httpContext.Request.ContentLength > 0))
+    {
+        using var reader = new StreamReader(httpContext.Request.Body);
+        json = await reader.ReadToEndAsync(ct);
+    }
+    else if (httpContext.Request.HasFormContentType)
+    {
+        var form = await httpContext.Request.ReadFormAsync(ct);
+        var file = form.Files.FirstOrDefault();
+        if (file is null)
+        {
+            return Results.BadRequest(new ErrorResponse { Error = "invalid_request", Detail = "No file uploaded." });
+        }
+        using var reader = new StreamReader(file.OpenReadStream());
+        json = await reader.ReadToEndAsync(ct);
+    }
+    else
+    {
+        return Results.BadRequest(new ErrorResponse { Error = "invalid_request", Detail = "Expected JSON body or file upload." });
+    }
+
+    if (string.IsNullOrWhiteSpace(json))
+    {
+        return Results.BadRequest(new ErrorResponse { Error = "invalid_request", Detail = "Request body is empty." });
+    }
+
+    var parseResult = PricingFileValidator.Parse(json);
+    if (!parseResult.IsValid)
+    {
+        return Results.BadRequest(new ErrorResponse
+        {
+            Error = "validation_failed",
+            Detail = string.Join("; ", parseResult.Errors)
+        });
+    }
+
+    if (contextFactory is not null)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(ct);
+        var repo = new ModelPricingRepository(db);
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        try
+        {
+            var grouped = parseResult.Entries.GroupBy(e => e.Provider);
+            foreach (var group in grouped)
+            {
+                var provider = group.Key;
+                var providerEntries = group.ToList();
+
+                await db.ModelPricing
+                    .Where(p => p.Provider == provider)
+                    .ExecuteDeleteAsync(ct);
+
+                await db.ModelPricing.AddRangeAsync(providerEntries, ct);
+            }
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+        catch (Exception)
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+    }
+
+    var groupedEntries = parseResult.Entries.GroupBy(e => e.Provider);
+    foreach (var group in groupedEntries)
+    {
+        var provider = group.Key;
+        var modelNames = group.Select(e => e.Model).ToList();
+        await pricingPublisher.PublishAsync(provider, modelNames, ct);
+    }
+
+    return Results.Ok(new { ok = true, count = parseResult.Entries.Count });
+});
+
 app.Run();
+
+static bool IsLocalConnection(ConnectionInfo connection)
+{
+    if (connection.RemoteIpAddress is null)
+    {
+        return true;
+    }
+
+    if (IPAddress.IsLoopback(connection.RemoteIpAddress))
+    {
+        return true;
+    }
+
+    if (connection.LocalIpAddress is not null)
+    {
+        return connection.RemoteIpAddress.Equals(connection.LocalIpAddress);
+    }
+
+    return false;
+}

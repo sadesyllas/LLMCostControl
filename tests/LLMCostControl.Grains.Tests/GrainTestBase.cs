@@ -130,6 +130,7 @@ public sealed class TestSiloConfigurator : ISiloConfigurator
             services.AddSingleton(SharedPricingStore.Instance);
             services.AddSingleton<IPricingStore>(SharedPricingStore.Instance);
             services.AddSingleton<IPricingCache, PricingCache>();
+            services.AddHostedService<PricingStreamSubscriber>();
 
             services.AddSingleton(SharedBudgetStore.Instance);
             services.AddSingleton<IBudgetStore>(SharedBudgetStore.Instance);

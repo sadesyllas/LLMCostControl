@@ -1,9 +1,7 @@
 using LLMCostControl.Grains.Abstractions;
-using LLMCostControl.Grains.Abstractions.StreamEvents;
 using LLMCostControl.Grains.Storage;
 using Orleans;
 using Orleans.Concurrency;
-using Orleans.Streams;
 
 namespace LLMCostControl.Grains.Implementations;
 
@@ -24,7 +22,7 @@ namespace LLMCostControl.Grains.Implementations;
 /// </para>
 /// </summary>
 [StatelessWorker]
-public sealed class PricingGrain : Grain, IPricingGrain, IAsyncObserver<PricingUpdatedStreamEvent>
+public sealed class PricingGrain : Grain, IPricingGrain
 {
     private readonly IPricingStore _store;
     private readonly IPricingCache _cache;
@@ -36,18 +34,6 @@ public sealed class PricingGrain : Grain, IPricingGrain, IAsyncObserver<PricingU
     {
         _store = store;
         _cache = cache;
-    }
-
-    /// <summary>
-    /// Subscribes to the pricing-updated stream to receive pushed pricing changes.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    public override async Task OnActivateAsync(CancellationToken cancellationToken)
-    {
-        var streamProvider = this.GetStreamProvider("pricing");
-        var stream = streamProvider.GetStream<PricingUpdatedStreamEvent>("pricing", "updates");
-        await stream.SubscribeAsync(this);
-        await base.OnActivateAsync(cancellationToken);
     }
 
     /// <summary>
@@ -68,27 +54,4 @@ public sealed class PricingGrain : Grain, IPricingGrain, IAsyncObserver<PricingU
         await _cache.RefreshAsync(modelName, _store);
         return _cache.Get(modelName);
     }
-
-    /// <summary>
-    /// Invoked when a pricing update event is pushed onto the stream.
-    /// Clears the local silo cache for the model if it matches this grain's key.
-    /// </summary>
-    /// <param name="item">The pricing update event.</param>
-    /// <param name="token">The stream sequence token.</param>
-    Task IAsyncObserver<PricingUpdatedStreamEvent>.OnNextAsync(PricingUpdatedStreamEvent item, StreamSequenceToken? token)
-    {
-        var modelName = this.GetPrimaryKeyString();
-        if (item.UpdatedModels.Contains(modelName, StringComparer.OrdinalIgnoreCase))
-        {
-            _cache.Remove(modelName);
-        }
-        return Task.CompletedTask;
-    }
-
-    /// <summary>Called when the stream completes.</summary>
-    Task IAsyncObserver<PricingUpdatedStreamEvent>.OnCompletedAsync() => Task.CompletedTask;
-
-    /// <summary>Called when the stream has an error.</summary>
-    /// <param name="ex">The stream error exception.</param>
-    Task IAsyncObserver<PricingUpdatedStreamEvent>.OnErrorAsync(Exception ex) => Task.CompletedTask;
 }
