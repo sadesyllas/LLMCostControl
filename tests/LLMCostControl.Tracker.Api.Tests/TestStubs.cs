@@ -3,6 +3,7 @@ using LLMCostControl.Domain.Common;
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Domain.Usage;
 using LLMCostControl.Grains.Storage;
+using LLMCostControl.Infrastructure.Pricing;
 
 namespace LLMCostControl.Tracker.Api.Tests;
 
@@ -65,5 +66,33 @@ public sealed class StubUsageEventStore : IUsageEventStore
             .OrderBy(e => e.CapturedAt)
             .ToList();
         return Task.FromResult(results);
+    }
+}
+
+/// <summary>
+/// Stub <see cref="IPricingStoreWriter"/> for M14 import endpoint tests.
+/// Records calls and also updates a <see cref="StubPricingStore"/> so that
+/// <c>PricingGrain</c> reads reflect the imported data after stream propagation.
+/// </summary>
+public sealed class StubPricingStoreWriter : IPricingStoreWriter
+{
+    private readonly StubPricingStore _store;
+
+    /// <summary>Recorded (Provider, Entries) pairs from each ReplaceProviderAsync call.</summary>
+    public List<(Provider Provider, IReadOnlyCollection<ModelPricing> Entries)> Calls { get; } = [];
+
+    /// <summary>Creates the writer backed by the given store (must be the same instance registered as IPricingStore).</summary>
+    public StubPricingStoreWriter(StubPricingStore store) => _store = store;
+
+    /// <summary>Records the call and updates the backing store so grains see the new pricing.</summary>
+    public Task ReplaceProviderAsync(
+        Provider provider,
+        IReadOnlyCollection<ModelPricing> entries,
+        CancellationToken ct = default)
+    {
+        Calls.Add((provider, entries));
+        foreach (var entry in entries)
+            _store.SetPricing(entry.Model, entry);
+        return Task.CompletedTask;
     }
 }

@@ -1,3 +1,4 @@
+using System.Net;
 using LLMCostControl.Grains.Abstractions;
 using LLMCostControl.Grains.Implementations;
 using LLMCostControl.Grains.Options;
@@ -25,6 +26,7 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 {
     builder.Services.AddDbContextFactory<CostTrackerDbContext>(options =>
         options.UseNpgsql(connectionString));
+    builder.Services.AddSingleton<IPricingStoreWriter, ModelPricingWriter>();
 }
 
 builder.Services.AddScoped<IPricingStore, PricingStore>();
@@ -90,6 +92,7 @@ builder.Host.UseOrleans(silo =>
 });
 
 builder.Services.AddSingleton<IPricingUpdatePublisher, OrleansPricingPublisher>();
+builder.Services.AddSingleton<PricingImportService>();
 
 var app = builder.Build();
 
@@ -179,5 +182,25 @@ app.MapPost("/api/usage/capture", async (
         return Results.BadRequest(new ErrorResponse { Error = "unknown_model", Detail = ex.Message });
     }
 }).RequireAuthorization();
+
+// M14: Localhost pricing file import endpoint (§8.3). No auth — restricted to
+// loopback callers only. Non-loopback requests are rejected with 403.
+app.MapPost("/api/pricing/import", async (HttpContext ctx, PricingImportService importService) =>
+{
+    var remoteIp = ctx.Connection.RemoteIpAddress;
+    if (remoteIp is not null && !IPAddress.IsLoopback(remoteIp))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    using var reader = new StreamReader(ctx.Request.Body);
+    var json = await reader.ReadToEndAsync(ctx.RequestAborted);
+
+    if (string.IsNullOrWhiteSpace(json))
+        return Results.UnprocessableEntity(new ImportErrorResponse { Errors = ["Request body is required."] });
+
+    var result = await importService.ImportAsync(json, ctx.RequestAborted);
+    return result.IsSuccess
+        ? Results.Ok(new ImportSuccessResponse { ImportedCount = result.ImportedCount })
+        : Results.UnprocessableEntity(new ImportErrorResponse { Errors = result.Errors });
+});
 
 app.Run();
