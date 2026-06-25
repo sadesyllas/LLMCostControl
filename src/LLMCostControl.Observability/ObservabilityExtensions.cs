@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -10,8 +11,27 @@ using Serilog.Sinks.OpenTelemetry;
 
 namespace LLMCostControl.Observability;
 
+/// <summary>
+/// Provides extension methods to configure and enrich observability structures.
+/// </summary>
 public static class ObservabilityExtensions
 {
+    /// <summary>
+    /// Sets standardized telemetry tags on the current activity for effective group and budget source tracking (§10.2).
+    /// </summary>
+    /// <param name="activity">The activity to tag.</param>
+    /// <param name="callerId">The caller identifier.</param>
+    /// <param name="effectiveGroup">The effective group ID or "None".</param>
+    /// <param name="budgetSource">The budget source (e.g. Group, UserOverride, None).</param>
+    public static void SetTelemetryTags(this Activity? activity, string callerId, string effectiveGroup, string budgetSource)
+    {
+        if (activity is not null)
+        {
+            activity.SetTag("effective_group", effectiveGroup);
+            activity.SetTag("budget_source", budgetSource);
+            activity.SetTag("caller_id", callerId);
+        }
+    }
     public static IHostBuilder UseObservability(this IHostBuilder hostBuilder, string serviceName)
     {
         return hostBuilder.UseSerilog((context, services, loggerConfig) =>

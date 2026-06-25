@@ -131,12 +131,7 @@ app.MapPost("/api/budget/check", async (
     var budgetSourceStr = result.BudgetSource.ToString();
     var effectiveGroupStr = result.EffectiveGroupId?.ToString() ?? "None";
 
-    var activity = Activity.Current;
-    if (activity is not null)
-    {
-        activity.SetTag("effective_group", effectiveGroupStr);
-        activity.SetTag("budget_source", budgetSourceStr);
-    }
+    Activity.Current.SetTelemetryTags(request.CallerId, effectiveGroupStr, budgetSourceStr);
 
     trackerMetrics.RecordBudgetCheck(request.CallerId, result.Allowed ? "allowed" : "denied", effectiveGroupStr, budgetSourceStr);
 
@@ -194,12 +189,7 @@ app.MapPost("/api/usage/capture", async (
         var budgetSourceStr = result.BudgetSource.ToString();
         var effectiveGroupStr = result.EffectiveGroupId?.ToString() ?? "None";
 
-        var activity = Activity.Current;
-        if (activity is not null)
-        {
-            activity.SetTag("effective_group", effectiveGroupStr);
-            activity.SetTag("budget_source", budgetSourceStr);
-        }
+        Activity.Current.SetTelemetryTags(request.CallerId, effectiveGroupStr, budgetSourceStr);
 
         trackerMetrics.RecordUsageCapture(
             request.CallerId,
@@ -233,6 +223,8 @@ app.MapPost("/api/usage/capture", async (
     }
     catch (UnknownModelException ex)
     {
+        Activity.Current.SetTelemetryTags(request.CallerId, "None", "None");
+
         trackerMetrics.RecordUsageCapture(
             request.CallerId,
             "rejected",
