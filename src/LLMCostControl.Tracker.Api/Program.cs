@@ -90,6 +90,7 @@ builder.Host.UseOrleans(silo =>
 });
 
 builder.Services.AddSingleton<IPricingUpdatePublisher, OrleansPricingPublisher>();
+builder.Services.AddScoped<PricingFileImporter>();
 
 var app = builder.Build();
 
@@ -179,5 +180,47 @@ app.MapPost("/api/usage/capture", async (
         return Results.BadRequest(new ErrorResponse { Error = "unknown_model", Detail = ex.Message });
     }
 }).RequireAuthorization();
+
+// M14: Localhost pricing file import endpoint (§8.3).
+// Accepts a canonical pricing file (§8.5) as JSON, validates it via the shared
+// validator (M5), persists via the refresh job's write path (M7), and publishes
+// pricing-updated events so PricingGrain activations pick up new values.
+// localhost-only: not reachable from a non-loopback address.
+app.MapPost("/api/pricing/import", async (
+    HttpContext context,
+    PricingFileImporter importer) =>
+{
+    using var reader = new StreamReader(context.Request.Body);
+    var json = await reader.ReadToEndAsync(context.RequestAborted);
+
+    var result = await importer.ImportAsync(json, context.RequestAborted);
+
+    if (!result.Success)
+    {
+        return Results.BadRequest(new ErrorResponse
+        {
+            Error = "invalid_file",
+            Detail = string.Join("; ", result.Errors),
+        });
+    }
+
+    return Results.Ok(new PricingImportResponse
+    {
+        Imported = true,
+        Count = result.ImportedCount,
+        UpdatedModels = result.UpdatedModels,
+    });
+}).AddEndpointFilter(async (context, next) =>
+{
+    var remote = context.HttpContext.Connection.RemoteIpAddress;
+    if (remote is not null && !System.Net.IPAddress.IsLoopback(remote))
+    {
+        return Results.Json(
+            new ErrorResponse { Error = "forbidden", Detail = "This endpoint is localhost-only." },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    return await next(context);
+});
 
 app.Run();

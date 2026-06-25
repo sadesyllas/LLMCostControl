@@ -110,3 +110,18 @@ public sealed class ErrorResponse
     /// <summary>Human-readable detail.</summary>
     public string? Detail { get; init; }
 }
+
+/// <summary>
+/// Response body for <c>POST /api/pricing/import</c> (§8.3).
+/// </summary>
+public sealed class PricingImportResponse
+{
+    /// <summary>Whether the import succeeded.</summary>
+    public bool Imported { get; init; }
+
+    /// <summary>The number of model entries imported.</summary>
+    public int Count { get; init; }
+
+    /// <summary>The model names whose pricing was updated.</summary>
+    public IReadOnlyList<string> UpdatedModels { get; init; } = [];
+}
