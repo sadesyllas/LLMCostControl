@@ -19,7 +19,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M6 | Provider adapters (Google, OpenAI, Anthropic) | §8.2 | M5, M4 | [x] | [x] |
 | M7 | Pricing refresh job | §8.4 | M6 | [x] | [x] |
 | M8 | Orleans silo host + grain interfaces + storage | §9.1, §8.6 | M4 | [x] | [x] |
-| M9 | PricingGrain ([StatelessWorker] + stream sub) | §8.6 | M8, M7 | [ ] | [ ] |
+| M9 | PricingGrain ([StatelessWorker] + stream sub) | §8.6 | M8, M7 | [x] | [x] |
 | M10 | UserBudgetGrain: budget resolution + 30 s TTL | §7, §9.1, §12.4 | M8, M4 | [ ] | [ ] |
 | M11 | Cost accrual + usage audit trail | §6.2.2 (cost), §9.4 | M9, M10 | [ ] | [ ] |
 | M12 | Auth: OAuth/JWKS validation | §6.1 | M0 | [ ] | [ ] |
@@ -191,7 +191,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §8.6
 - **Depends on:** M8, M7
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - `PricingGrain` keyed by model name; decorated `[StatelessWorker]` →
     local-only activation, multiple activations per silo.
