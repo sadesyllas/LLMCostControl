@@ -51,4 +51,10 @@ public class UsageEventRepository
     /// </summary>
     public Task<bool> ExistsAsync(string eventId, CancellationToken ct = default)
         => _db.UsageEvents.AnyAsync(e => e.EventId == eventId, ct);
+
+    /// <summary>
+    /// Returns the event with the given id, or null when not found.
+    /// </summary>
+    public Task<UsageEvent?> GetByIdAsync(string eventId, CancellationToken ct = default)
+        => _db.UsageEvents.FirstOrDefaultAsync(e => e.EventId == eventId, ct);
 }

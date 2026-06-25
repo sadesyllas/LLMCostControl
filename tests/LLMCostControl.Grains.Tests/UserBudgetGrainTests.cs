@@ -1,5 +1,7 @@
 using LLMCostControl.Domain.Budgets;
 using LLMCostControl.Domain.Common;
+using LLMCostControl.Domain.Pricing;
+using LLMCostControl.Domain.Usage;
 using LLMCostControl.Grains.Abstractions;
 using LLMCostControl.Grains.Options;
 using LLMostControl.Grains.Tests;
@@ -16,9 +18,10 @@ public class UserBudgetGrainTests : GrainTestBase
     public UserBudgetGrainTests(GrainClusterFixture fixture) : base(fixture)
     {
         // Reset mutable shared state before each test so that budget store
-        // presets, options, and the clock do not leak across tests.
+        // presets, usage event store, options, and the clock do not leak.
         BudgetOptions.AllowNonBudgetedUsers = false;
         BudgetOptions.BudgetCacheTtl = TimeSpan.FromSeconds(1);
+        UsageEventStore.Reset();
     }
 
     private static Money Usd(decimal amount) => new(amount, "USD");
@@ -161,12 +164,15 @@ public class UserBudgetGrainTests : GrainTestBase
     }
 
     [Fact]
-    public async Task Capture_returns_zero_cost_in_M10()
+    public async Task Capture_returns_real_cost_with_pricing()
     {
-        BudgetStore.SetBudget("capture-m10@example.com",
+        BudgetStore.SetBudget("capture-m11@example.com",
             EffectiveBudget.FromUserOverride(Usd(100m)));
+        Store.SetPricing("gpt-4o",
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o",
+                TokenPrices.Create(2.5m, 10m, 1.25m)));
 
-        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("capture-m10@example.com");
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("capture-m11@example.com");
         var result = await grain.CaptureUsageAsync(new UsageCaptureRequest
         {
             Model = "gpt-4o",
@@ -174,8 +180,198 @@ public class UserBudgetGrainTests : GrainTestBase
             TokensOutput = 500,
         });
 
-        result.CostAmount.Should().Be(0m, "cost accrual is implemented in M11.");
-        result.RunningSpendAmount.Should().Be(0m);
-        result.RemainingAmount.Should().Be(100m);
+        // Cost = (1000 * 2.5 + 500 * 10) / 1_000_000 = 0.0075
+        result.CostAmount.Should().Be(0.0075m);
+        result.RunningSpendAmount.Should().Be(0.0075m);
+        result.RemainingAmount.Should().Be(100m - 0.0075m);
+    }
+
+    [Fact]
+    public async Task Cost_computation_correct_for_mixed_cached_and_non_cached_tokens()
+    {
+        BudgetStore.SetBudget("mixed-cost@example.com",
+            EffectiveBudget.FromUserOverride(Usd(100m)));
+        Store.SetPricing("claude-3",
+            ModelPricing.Create(Provider.Anthropic, "claude-3",
+                TokenPrices.Create(3m, 15m, 0.3m, 3.75m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("mixed-cost@example.com");
+        var result = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "claude-3",
+            TokensInput = 500_000,
+            TokensOutput = 200_000,
+            TokensCacheRead = 300_000,
+            TokensCacheWrite = 100_000,
+        });
+
+        // Cost = (500000*3 + 200000*15 + 300000*0.3 + 100000*3.75) / 1M
+        //      = (1500000 + 3000000 + 90000 + 375000) / 1M = 4.965
+        result.CostAmount.Should().Be(4.965m);
+        result.RunningSpendAmount.Should().Be(4.965m);
+    }
+
+    [Fact]
+    public async Task Capture_appends_audit_row_with_all_required_fields()
+    {
+        var groupId = Guid.NewGuid();
+        BudgetStore.SetBudget("audit@example.com",
+            EffectiveBudget.FromGroup(Usd(500m), groupId));
+        Store.SetPricing("gpt-4o",
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o",
+                TokenPrices.Create(2.5m, 10m, 1.25m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("audit@example.com");
+        var result = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            TokensCacheRead = 200,
+            TokensCacheWrite = 0,
+            RequestId = "req-audit-001",
+        });
+
+        UsageEventStore.AppendCallCount.Should().Be(1);
+        var evt = UsageEventStore.Events.Single();
+        evt.EventId.Should().Be("req-audit-001");
+        evt.CallerId.Value.Should().Be("audit@example.com");
+        evt.EffectiveGroupId.Should().Be(groupId);
+        evt.BudgetSource.Should().Be(BudgetSource.Group);
+        evt.Model.Should().Be("gpt-4o");
+        evt.TokensInput.Should().Be(1000);
+        evt.TokensOutput.Should().Be(500);
+        evt.TokensCacheRead.Should().Be(200);
+        evt.TokensCacheWrite.Should().Be(0);
+        evt.UnitPrices.Input.Should().Be(2.5m);
+        evt.UnitPrices.Output.Should().Be(10m);
+        evt.UnitPrices.CacheRead.Should().Be(1.25m);
+        evt.CostAmount.Should().Be(result.CostAmount);
+        evt.CostCurrency.Should().Be("USD");
+        evt.RunningSpendAfter.Should().Be(result.RunningSpendAmount);
+        evt.Period.Should().Be(BudgetPeriod.FromDate(TimeProvider.GetUtcNow()));
+    }
+
+    [Fact]
+    public async Task Duplicate_requestId_does_not_double_accrue_or_insert_second_row()
+    {
+        BudgetStore.SetBudget("idempotent@example.com",
+            EffectiveBudget.FromUserOverride(Usd(100m)));
+        Store.SetPricing("gpt-4o",
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o",
+                TokenPrices.Create(2.5m, 10m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("idempotent@example.com");
+
+        var first = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            RequestId = "req-dup-001",
+        });
+
+        var second = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            RequestId = "req-dup-001",
+        });
+
+        UsageEventStore.AppendCallCount.Should().Be(1, "second capture returns early via idempotency check, never calling AppendAsync");
+        UsageEventStore.Events.Should().HaveCount(1, "only one audit row should exist");
+        second.CostAmount.Should().Be(first.CostAmount);
+        second.RunningSpendAmount.Should().Be(first.RunningSpendAmount,
+            "duplicate capture must not double-accrue.");
+    }
+
+    [Fact]
+    public async Task Unknown_model_throws_distinct_error()
+    {
+        BudgetStore.SetBudget("unknown-model@example.com",
+            EffectiveBudget.FromUserOverride(Usd(100m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("unknown-model@example.com");
+
+        var act = async () => await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "nonexistent-model",
+            TokensInput = 1000,
+            TokensOutput = 500,
+        });
+
+        var ex = await act.Should().ThrowAsync<UnknownModelException>();
+        ex.Which.Model.Should().Be("nonexistent-model");
+    }
+
+    [Fact]
+    public async Task Running_spend_reconstructible_by_summing_audit_rows()
+    {
+        BudgetStore.SetBudget("reconstruct@example.com",
+            EffectiveBudget.FromUserOverride(Usd(100m)));
+        Store.SetPricing("gpt-4o",
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o",
+                TokenPrices.Create(2.5m, 10m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("reconstruct@example.com");
+
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            RequestId = "recon-1",
+        });
+
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o",
+            TokensInput = 2000,
+            TokensOutput = 1000,
+            RequestId = "recon-2",
+        });
+
+        var period = BudgetPeriod.FromDate(TimeProvider.GetUtcNow());
+        var events = await UsageEventStore.GetForCallerAsync(
+            CallerId.From("reconstruct@example.com"), period);
+
+        events.Should().HaveCount(2);
+        var sum = events.Sum(e => e.CostAmount);
+
+        var checkResult = await grain.CheckBudgetAsync();
+        sum.Should().Be(checkResult.RunningSpendAmount,
+            "running spend should equal the sum of all audit row costs for the period.");
+    }
+
+    [Fact]
+    public async Task Multiple_captures_accumulate_running_spend()
+    {
+        BudgetStore.SetBudget("accumulate@example.com",
+            EffectiveBudget.FromUserOverride(Usd(100m)));
+        Store.SetPricing("gpt-4o",
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o",
+                TokenPrices.Create(2.5m, 10m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("accumulate@example.com");
+
+        var first = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            RequestId = "acc-1",
+        });
+
+        var second = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            RequestId = "acc-2",
+        });
+
+        second.RunningSpendAmount.Should().Be(first.RunningSpendAmount + second.CostAmount,
+            "second capture should add to the running spend from the first.");
     }
 }

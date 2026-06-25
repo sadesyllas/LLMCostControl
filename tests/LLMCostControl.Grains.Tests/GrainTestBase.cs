@@ -34,6 +34,16 @@ public static class SharedBudgetStore
 }
 
 /// <summary>
+/// Shared static usage event store that both the test code and the silo's DI
+/// container reference.
+/// </summary>
+public static class SharedUsageEventStore
+{
+    /// <summary>The single shared store instance.</summary>
+    public static StubUsageEventStore Instance { get; } = new();
+}
+
+/// <summary>
 /// Shared static budget options that both the test code and the silo's DI
 /// container reference. Tests can mutate <see cref="AllowNonBudgetedUsers"/>
 /// (tests run sequentially within the assembly).
@@ -74,6 +84,9 @@ public sealed class GrainClusterFixture : IDisposable
 
     /// <summary>The shared stub budget store.</summary>
     public StubBudgetStore BudgetStore => SharedBudgetStore.Instance;
+
+    /// <summary>The shared stub usage event store.</summary>
+    public StubUsageEventStore UsageEventStore => SharedUsageEventStore.Instance;
 
     /// <summary>The shared budget options.</summary>
     public BudgetGrainOptions BudgetOptions => SharedBudgetOptions.Instance;
@@ -120,6 +133,8 @@ public sealed class TestSiloConfigurator : ISiloConfigurator
 
             services.AddSingleton(SharedBudgetStore.Instance);
             services.AddSingleton<IBudgetStore>(SharedBudgetStore.Instance);
+            services.AddSingleton(SharedUsageEventStore.Instance);
+            services.AddSingleton<IUsageEventStore>(SharedUsageEventStore.Instance);
             services.AddSingleton(SharedBudgetOptions.Instance);
             services.AddSingleton<TimeProvider>(SharedTimeProvider.Instance);
         });
@@ -158,6 +173,9 @@ public abstract class GrainTestBase : IClassFixture<GrainClusterFixture>
 
     /// <summary>The shared stub budget store.</summary>
     protected StubBudgetStore BudgetStore => _fixture.BudgetStore;
+
+    /// <summary>The shared stub usage event store.</summary>
+    protected StubUsageEventStore UsageEventStore => _fixture.UsageEventStore;
 
     /// <summary>The shared budget options.</summary>
     protected BudgetGrainOptions BudgetOptions => _fixture.BudgetOptions;

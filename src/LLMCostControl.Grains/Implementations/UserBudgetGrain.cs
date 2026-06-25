@@ -1,5 +1,7 @@
 using LLMCostControl.Domain.Budgets;
 using LLMCostControl.Domain.Common;
+using LLMCostControl.Domain.Pricing;
+using LLMCostControl.Domain.Usage;
 using LLMCostControl.Grains.Abstractions;
 using LLMCostControl.Grains.Options;
 using LLMCostControl.Grains.State;
@@ -13,7 +15,7 @@ namespace LLMCostControl.Grains.Implementations;
 /// (typically an email). Resolves the effective budget for the caller
 /// (per-user override wins; else largest group budget; else none), holds the
 /// running spend for the current budget period in persistent state, and
-/// answers check calls (§7, §9.1, §12.4).
+/// answers check and capture calls (§7, §9.1, §12.4, §6.2.2, §9.4).
 /// <para>
 /// The effective budget is cached with a short TTL
 /// (<see cref="BudgetGrainOptions.BudgetCacheTtl"/>, default 30 s) so that
@@ -22,14 +24,20 @@ namespace LLMCostControl.Grains.Implementations;
 /// running spend is reset to zero and the new period is persisted.
 /// </para>
 /// <para>
-/// Capture accrual (cost computation via <c>PricingGrain</c>) is implemented in
-/// M11. In M10, <see cref="CaptureUsageAsync"/> resolves the budget and returns
-/// current state without accruing cost.
+/// On capture, the grain looks up <see cref="IPricingGrain"/> for the model,
+/// multiplies token counts by unit prices (per 1M tokens), sums to a total
+/// cost, accrues it to the running spend, and appends exactly one
+/// <see cref="UsageEvent"/> audit row. Duplicate captures (same
+/// <c>requestId</c>) are no-ops. Unknown models are rejected with
+/// <see cref="UnknownModelException"/>.
 /// </para>
 /// </summary>
 public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
 {
-    private readonly IBudgetStore _store;
+    private const decimal TokensPerMillion = 1_000_000m;
+
+    private readonly IBudgetStore _budgetStore;
+    private readonly IUsageEventStore _usageEventStore;
     private readonly BudgetGrainOptions _options;
     private readonly TimeProvider _timeProvider;
 
@@ -45,16 +53,18 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
     private DateTimeOffset _budgetLoadedAt;
 
     /// <summary>
-    /// Creates the grain with the given budget store, options, time provider,
-    /// and persistent state storage.
+    /// Creates the grain with the given budget store, usage event store,
+    /// options, time provider, and persistent state storage.
     /// </summary>
     public UserBudgetGrain(
-        IBudgetStore store,
+        IBudgetStore budgetStore,
+        IUsageEventStore usageEventStore,
         BudgetGrainOptions options,
         TimeProvider timeProvider,
         [PersistentState("budget", "Default")] IPersistentState<UserBudgetGrainState> storage)
     {
-        _store = store;
+        _budgetStore = budgetStore;
+        _usageEventStore = usageEventStore;
         _options = options;
         _timeProvider = timeProvider;
         _storage = storage;
@@ -77,15 +87,101 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
     }
 
     /// <summary>
-    /// M10 implementation: resolves the effective budget and returns the
-    /// current running spend and remaining budget without accruing cost.
-    /// Cost computation and accrual are added in M11.
+    /// Captures token usage: looks up pricing via <see cref="IPricingGrain"/>,
+    /// computes cost, accrues to running spend, and appends one
+    /// <see cref="UsageEvent"/> audit row (§6.2.2, §9.4). Idempotent via
+    /// <paramref name="request"/>.<see cref="UsageCaptureRequest.RequestId"/>
+    /// — a duplicate capture returns the original result without
+    /// re-accruing. Throws <see cref="UnknownModelException"/> when the model
+    /// is not in the pricing set.
     /// </summary>
     public async Task<UsageCaptureResult> CaptureUsageAsync(UsageCaptureRequest request)
     {
         await EnsurePeriodCurrentAsync();
+
+        var eventId = string.IsNullOrWhiteSpace(request.RequestId)
+            ? Guid.NewGuid().ToString()
+            : request.RequestId;
+
+        // Idempotency: if we already captured this requestId, return the
+        // original result without re-accruing.
+        if (!string.IsNullOrWhiteSpace(request.RequestId))
+        {
+            var existing = await _usageEventStore.GetByIdAsync(eventId);
+            if (existing is not null)
+            {
+                return BuildCaptureResultFromEvent(existing);
+            }
+        }
+
+        // Look up pricing for the model.
+        var pricingGrain = GrainFactory.GetGrain<IPricingGrain>(request.Model);
+        var pricing = await pricingGrain.GetPricingAsync();
+
+        if (pricing is null)
+        {
+            throw new UnknownModelException(request.Model);
+        }
+
+        // Compute cost (prices are per 1M tokens).
+        var cost = ComputeCost(
+            request.TokensInput,
+            request.TokensOutput,
+            request.TokensCacheRead,
+            request.TokensCacheWrite,
+            pricing);
+
+        var currency = pricing.Currency;
+
+        // Accrue to running spend.
+        var state = _storage.State;
+        state.RunningSpendAmount += cost;
+        state.RunningSpendCurrency = currency;
+        await _storage.WriteStateAsync();
+
+        // Resolve effective budget for the audit row.
         var budget = await GetEffectiveBudgetAsync();
-        return BuildCaptureResult(budget, costAmount: 0m);
+
+        // Append the usage event audit row.
+        var usageEvent = UsageEvent.Create(
+            eventId,
+            CallerId.From(this.GetPrimaryKeyString()),
+            budget.GroupId,
+            budget.Source,
+            request.Model,
+            request.TokensInput,
+            request.TokensOutput,
+            request.TokensCacheRead,
+            request.TokensCacheWrite,
+            TokenPrices.Create(pricing.Input, pricing.Output, pricing.CacheRead, pricing.CacheWrite),
+            cost,
+            currency,
+            state.RunningSpendAmount,
+            CurrentPeriod(),
+            _timeProvider.GetUtcNow());
+
+        await _usageEventStore.AppendAsync(usageEvent);
+
+        return BuildCaptureResult(budget, cost, state.RunningSpendAmount, currency);
+    }
+
+    /// <summary>
+    /// Computes the total cost from token counts and unit prices (per 1M
+    /// tokens). Null cache prices are treated as zero.
+    /// </summary>
+    private static decimal ComputeCost(
+        long tokensInput,
+        long tokensOutput,
+        long tokensCacheRead,
+        long tokensCacheWrite,
+        PricingResult pricing)
+    {
+        var inputCost = tokensInput * pricing.Input / TokensPerMillion;
+        var outputCost = tokensOutput * pricing.Output / TokensPerMillion;
+        var cacheReadCost = tokensCacheRead * (pricing.CacheRead ?? 0m) / TokensPerMillion;
+        var cacheWriteCost = tokensCacheWrite * (pricing.CacheWrite ?? 0m) / TokensPerMillion;
+
+        return inputCost + outputCost + cacheReadCost + cacheWriteCost;
     }
 
     /// <summary>
@@ -121,7 +217,7 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
         }
 
         var callerId = CallerId.From(this.GetPrimaryKeyString());
-        _cachedBudget = await _store.ResolveAsync(callerId, CurrentPeriod());
+        _cachedBudget = await _budgetStore.ResolveAsync(callerId, CurrentPeriod());
         _budgetLoadedAt = now;
         return _cachedBudget;
     }
@@ -178,13 +274,15 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
 
     /// <summary>
     /// Builds a <see cref="UsageCaptureResult"/> from the effective budget,
-    /// current running spend, and the given cost amount (zero in M10).
+    /// cost, and updated running spend.
     /// </summary>
-    private UsageCaptureResult BuildCaptureResult(EffectiveBudget budget, decimal costAmount)
+    private UsageCaptureResult BuildCaptureResult(
+        EffectiveBudget budget,
+        decimal cost,
+        decimal runningSpend,
+        string currency)
     {
         var callerId = this.GetPrimaryKeyString();
-        var runningSpend = _storage.State.RunningSpendAmount;
-        var runningCurrency = _storage.State.RunningSpendCurrency;
 
         decimal remainingAmount;
         string remainingCurrency;
@@ -197,18 +295,36 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
         else
         {
             remainingAmount = 0m;
-            remainingCurrency = runningCurrency;
+            remainingCurrency = currency;
         }
 
         return new UsageCaptureResult
         {
             CallerId = callerId,
-            CostAmount = costAmount,
-            CostCurrency = runningCurrency,
+            CostAmount = cost,
+            CostCurrency = currency,
             RunningSpendAmount = runningSpend,
-            RunningSpendCurrency = runningCurrency,
+            RunningSpendCurrency = currency,
             RemainingAmount = remainingAmount,
             RemainingCurrency = remainingCurrency,
+        };
+    }
+
+    /// <summary>
+    /// Builds a <see cref="UsageCaptureResult"/> from an existing
+    /// <see cref="UsageEvent"/> (idempotent duplicate return).
+    /// </summary>
+    private UsageCaptureResult BuildCaptureResultFromEvent(UsageEvent evt)
+    {
+        return new UsageCaptureResult
+        {
+            CallerId = evt.CallerId.Value,
+            CostAmount = evt.CostAmount,
+            CostCurrency = evt.CostCurrency,
+            RunningSpendAmount = evt.RunningSpendAfter,
+            RunningSpendCurrency = evt.CostCurrency,
+            RemainingAmount = 0m,
+            RemainingCurrency = evt.CostCurrency,
         };
     }
 }

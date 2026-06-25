@@ -44,6 +44,8 @@ public class SiloBootstrapTests : GrainTestBase
     {
         BudgetStore.SetBudget("capture@example.com",
             EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+        Store.SetPricing("gpt-4o", ModelPricing.Create(
+            Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m, 1.25m)));
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("capture@example.com");
 
         var result = await grain.CaptureUsageAsync(new UsageCaptureRequest
@@ -57,7 +59,7 @@ public class SiloBootstrapTests : GrainTestBase
 
         result.Should().NotBeNull();
         result.CallerId.Should().Be("capture@example.com");
-        result.CostAmount.Should().Be(0m, "cost accrual is implemented in M11");
+        result.CostAmount.Should().BePositive("pricing is set and tokens are non-zero.");
     }
 
     [Fact]

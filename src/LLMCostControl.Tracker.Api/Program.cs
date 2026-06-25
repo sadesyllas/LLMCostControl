@@ -24,6 +24,7 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 
 builder.Services.AddScoped<IPricingStore, PricingStore>();
 builder.Services.AddScoped<IBudgetStore, BudgetStore>();
+builder.Services.AddScoped<IUsageEventStore, UsageEventStore>();
 builder.Services.Configure<BudgetGrainOptions>(builder.Configuration.GetSection("BudgetGrain"));
 builder.Services.AddSingleton(TimeProvider.System);
 
