@@ -1,7 +1,7 @@
 # Context Snapshot
 
-Snapshot taken after completing milestone **M16**. This file is a quick-reference
-for resuming work on **M17** and beyond.
+Snapshot taken after completing milestone **M17**. This file is a quick-reference
+for resuming work on **M18** and beyond.
 
 ## Project Status
 
@@ -24,30 +24,34 @@ for resuming work on **M17** and beyond.
 | M14 | Localhost pricing file import endpoint | [x] | [x] |
 | M15 | Effective-group telemetry tagging | [x] | [x] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | [x] | [x] |
-| M17 | Admin app: groups/budgets/membership/overrides CRUD | [ ] | [ ] |
+| M17 | Admin app: groups/budgets/membership/overrides CRUD | [x] | [x] |
 | M18 | Admin app: read-only views + pricing file upload | [ ] | [ ] |
 | M19 | Contract/conformance tests + E2E local-dev verification | [ ] | [ ] |
 
-**Next milestone: M17** — Admin app: groups/budgets/membership/overrides CRUD
-(Spec ref §12.3, depends on M16, M4).
+**Next milestone: M18** — Admin app: read-only views + pricing file upload
+(Spec ref §12.3, depends on M17, M5).
 
 ## Test Counts (verified green)
 
-Total: **130 tests**, all passing.
+Total: **142 tests**, all passing (entire suite verified green in WSL, including
+both Docker-gated Testcontainers suites).
 
 | Test project | Tests |
 |--------------|------:|
 | LLMCostControl.Domain.Tests | 38 |
-| LLMCostControl.Infrastructure.Tests | 40 |
+| LLMCostControl.Infrastructure.Tests | 40 (Testcontainers) |
 | LLMCostControl.Grains.Tests | 24 |
 | LLMCostControl.Tracker.Api.Tests | 21 (6 auth + 7 endpoint + 3 import + 4 telemetry + 1 smoke) |
 | LLMCostControl.Observability.Tests | 1 |
-| LLMCostControl.Admin.App.Tests | 6 (4 bUnit auth-gated + 1 OIDC sign-in + 1 smoke) |
+| LLMCostControl.Admin.App.Tests | 18 (4 auth-gated + 1 OIDC + 6 admin CRUD bUnit + 6 Postgres integration + 1 smoke) |
 
-> **Note:** `LLMCostControl.Infrastructure.Tests` (40) use **Testcontainers**
-> Postgres and require a running Docker daemon. They cannot run in an
-> environment without Docker; the M14 tests deliberately use stubs and need no
-> Docker.
+> **Docker-gated tests run in WSL.** Docker isn't installed on the Windows host,
+> and in WSL both Docker Hub and nuget.org are firewalled. Recipe (see the
+> `wsl-test-recipe` memory): `NUGET_PACKAGES=/mnt/c/Users/s.desyllas/.nuget/packages`
+> (Windows cache, offline restore) + `TESTCONTAINERS_RYUK_DISABLED=true`
+> (only `postgres:17` is `docker load`-ed) + `-p:NuGetAudit=false` (skips the
+> api.nuget.org vuln fetch that `TreatWarningsAsErrors` turns fatal).
+> `dotnet test LLMCostControl.slnx` with these passes all 142.
 
 ## Repository Layout
 
@@ -174,6 +178,18 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 22. **M16 deferred to M17:** the admin app references Infrastructure and registers
     `IDbContextFactory<CostTrackerDbContext>` (the shared-repo data path, no grains),
     but actual repository registration + CRUD pages land in M17.
+23. **M17 admin commands go through `IAdminCommandService`** (real impl over the
+    shared repos via `IDbContextFactory`; a `FakeAdminCommandService` powers bUnit
+    UI tests; integration tests hit the real one against Testcontainers Postgres).
+    Validation lives in the service (domain `Create` guards + amount > 0 + duplicate
+    check); the page catches and displays errors. `bunit 2.x`: `Render<T>()`,
+    `Find("[data-testid=x]").Change(...)/.Click()`. `@rendermode InteractiveServer`
+    on the page does NOT break direct bUnit rendering.
+24. **Docker tests run in WSL, not on the Windows host** (Docker isn't installed on
+    Windows). In WSL both Docker Hub and nuget.org are firewalled — see the
+    `wsl-test-recipe` memory and the Test Counts note for the exact env recipe.
+    The full 142-test suite is verified green via `dotnet test LLMCostControl.slnx`
+    in WSL with that recipe.
 
 ## Key Source Files
 
@@ -260,6 +276,15 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   Demo Counter/Weather pages removed
 - `Home.razor` has `@attribute [Authorize]`; `appsettings.json` has an `AzureAd`
   section (empty placeholders; secret via env/user-secrets)
+- `Services/IAdminCommandService.cs` + `AdminCommandService.cs` (M17) — admin CRUD
+  handlers (groups/budgets/membership/overrides) over the shared repos via
+  `IDbContextFactory` (new context per op; never grains). Validates: empty name,
+  amount ≤ 0, empty caller, duplicate membership. Registered scoped in `Program.cs`
+- `Components/Pages/Administration.razor` (M17) — `@page "/administration"`,
+  `[Authorize(Policy=AdminPolicy)]`, `@rendermode InteractiveServer`. Full CRUD UI
+  with `data-testid` hooks; errors surfaced via a `GuardAsync` try/catch
+- Infrastructure repo additions (M17): `GroupBudgetRepository.DeleteAsync`
+  (clear), `GroupMembershipRepository.GetCallersForGroupAsync` + `ExistsAsync`
 
 ## Key Test Files
 
@@ -300,6 +325,13 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   `AdminAppFactory` injects `AzureAd:*` via `CreateHost`+`ConfigureHostConfiguration`
   (so Program reads it at top level) and stubs OIDC metadata via
   `PostConfigure<OpenIdConnectOptions>` + `StaticConfigurationManager`
+- `Admin.App.Tests/AdministrationPageTests.cs` — 6 bUnit tests (full CRUD flow +
+  validation: empty name, zero/negative budget, empty caller, duplicate member)
+  using `FakeAdminCommandService` (in-memory `IAdminCommandService`)
+- `Admin.App.Tests/AdminCommandServiceIntegrationTests.cs` — 6 Testcontainers
+  Postgres tests over the real `AdminCommandService` (own `TestDbContextFactory`)
+- `Admin.App.Tests/FakeAdminCommandService.cs` — in-memory service mirroring the
+  real validation (for bUnit)
 - `Admin.App.Tests/SmokeTests.cs` — 1 smoke test
 - `Infrastructure.Tests/RepositoryTestBase.cs` — Testcontainers Postgres
 - `Infrastructure.Tests/Stubs/StubPricingComponents.cs`
@@ -321,6 +353,9 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 ## Git History (recent)
 
 ```
+2cffc5e M17: mark milestone done and tested
+1eeb42f M17: admin CRUD for groups/budgets/membership/overrides
+58acc38 docs: update CONTEXT_SNAPSHOT.md after M16
 670b119 M16: mark milestone done and tested
 b354a47 M16: Blazor admin app scaffolding + EntraID auth
 b9043d7 docs: update CONTEXT_SNAPSHOT.md after M15
