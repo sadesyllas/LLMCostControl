@@ -67,4 +67,12 @@ public sealed record UsageCaptureResult
     /// <summary>The currency of the remaining budget.</summary>
     [Id(6)]
     public required string RemainingCurrency { get; init; }
+
+    /// <summary>The source of the effective budget used for this capture (for telemetry tagging, §10.2).</summary>
+    [Id(7)]
+    public BudgetSource BudgetSource { get; init; }
+
+    /// <summary>The effective group id when the source is a group; null otherwise (for telemetry tagging, §10.2).</summary>
+    [Id(8)]
+    public Guid? EffectiveGroupId { get; init; }
 }

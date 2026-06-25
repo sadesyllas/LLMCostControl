@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using LLMCostControl.Grains.Abstractions;
 using LLMCostControl.Grains.Implementations;
@@ -9,6 +10,7 @@ using LLMCostControl.Infrastructure.Pricing;
 using LLMCostControl.Observability;
 using LLMCostControl.Tracker.Api.Auth;
 using LLMCostControl.Tracker.Api.Endpoints;
+using LLMCostControl.Tracker.Api.Telemetry;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -93,6 +95,7 @@ builder.Host.UseOrleans(silo =>
 
 builder.Services.AddSingleton<IPricingUpdatePublisher, OrleansPricingPublisher>();
 builder.Services.AddSingleton<PricingImportService>();
+builder.Services.AddSingleton<TrackerMetrics>();
 
 var app = builder.Build();
 
@@ -111,10 +114,12 @@ if (authOptions.IsEnabled)
        .RequireAuthorization();
 }
 
-// M13: Budget check endpoint (§6.2.1).
+// M13: Budget check endpoint (§6.2.1). M15: tags span + log + metrics.
 app.MapPost("/api/budget/check", async (
     BudgetCheckRequest request,
-    IGrainFactory grainFactory) =>
+    IGrainFactory grainFactory,
+    TrackerMetrics metrics,
+    ILogger<Program> logger) =>
 {
     if (string.IsNullOrWhiteSpace(request.CallerId))
     {
@@ -123,6 +128,20 @@ app.MapPost("/api/budget/check", async (
 
     var grain = grainFactory.GetGrain<IUserBudgetGrain>(request.CallerId);
     var result = await grain.CheckBudgetAsync();
+
+    // M15: propagate effective_group + budget_source into span, log scope, and metrics.
+    var effectiveGroup = result.EffectiveGroupId?.ToString() ?? "none";
+    var budgetSource = result.BudgetSource.ToString();
+    Activity.Current?.SetTag("effective_group", effectiveGroup);
+    Activity.Current?.SetTag("budget_source", budgetSource);
+    using var _ = logger.BeginScope(new Dictionary<string, object>
+    {
+        ["effective_group"] = effectiveGroup,
+        ["budget_source"] = budgetSource,
+    });
+    metrics.RecordCheck(result.Allowed, budgetSource, effectiveGroup);
+    logger.LogInformation("Budget check: callerId={CallerId} allowed={Allowed} budgetSource={BudgetSource} effectiveGroup={EffectiveGroup}",
+        result.CallerId, result.Allowed, budgetSource, effectiveGroup);
 
     var response = new BudgetCheckResponse
     {
@@ -138,10 +157,12 @@ app.MapPost("/api/budget/check", async (
     return Results.Ok(response);
 }).RequireAuthorization();
 
-// M13: Usage capture endpoint (§6.2.2).
+// M13: Usage capture endpoint (§6.2.2). M15: tags span + log + metrics.
 app.MapPost("/api/usage/capture", async (
     UsageCaptureDto request,
-    IGrainFactory grainFactory) =>
+    IGrainFactory grainFactory,
+    TrackerMetrics metrics,
+    ILogger<Program> logger) =>
 {
     if (string.IsNullOrWhiteSpace(request.CallerId))
     {
@@ -166,6 +187,20 @@ app.MapPost("/api/usage/capture", async (
             TokensCacheWrite = request.Tokens.CacheWrite,
             RequestId = request.RequestId,
         });
+
+        // M15: propagate effective_group + budget_source into span, log scope, and metrics.
+        var effectiveGroup = result.EffectiveGroupId?.ToString() ?? "none";
+        var budgetSource = result.BudgetSource.ToString();
+        Activity.Current?.SetTag("effective_group", effectiveGroup);
+        Activity.Current?.SetTag("budget_source", budgetSource);
+        using var _ = logger.BeginScope(new Dictionary<string, object>
+        {
+            ["effective_group"] = effectiveGroup,
+            ["budget_source"] = budgetSource,
+        });
+        metrics.RecordCapture(result.CostAmount, request.Model, budgetSource, effectiveGroup);
+        logger.LogInformation("Usage capture: callerId={CallerId} model={Model} cost={Cost} budgetSource={BudgetSource} effectiveGroup={EffectiveGroup}",
+            result.CallerId, request.Model, result.CostAmount, budgetSource, effectiveGroup);
 
         var response = new UsageCaptureResponse
         {
