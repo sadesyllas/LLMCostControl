@@ -1,7 +1,7 @@
 # Context Snapshot
 
-Snapshot taken after completing milestone **M17**. This file is a quick-reference
-for resuming work on **M18** and beyond.
+Snapshot taken after completing milestone **M18**. This file is a quick-reference
+for resuming work on **M19** and beyond.
 
 ## Project Status
 
@@ -25,15 +25,15 @@ for resuming work on **M18** and beyond.
 | M15 | Effective-group telemetry tagging | [x] | [x] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | [x] | [x] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | [x] | [x] |
-| M18 | Admin app: read-only views + pricing file upload | [ ] | [ ] |
+| M18 | Admin app: read-only views + pricing file upload | [x] | [x] |
 | M19 | Contract/conformance tests + E2E local-dev verification | [ ] | [ ] |
 
-**Next milestone: M18** — Admin app: read-only views + pricing file upload
-(Spec ref §12.3, depends on M17, M5).
+**Next milestone: M19** — Contract/conformance tests + E2E local-dev verification
+(Spec ref §13.4, §14.3, depends on M13, M14, M15, M18).
 
 ## Test Counts (verified green)
 
-Total: **142 tests**, all passing (entire suite verified green in WSL, including
+Total: **148 tests**, all passing (entire suite verified green in WSL, including
 both Docker-gated Testcontainers suites).
 
 | Test project | Tests |
@@ -43,7 +43,7 @@ both Docker-gated Testcontainers suites).
 | LLMCostControl.Grains.Tests | 24 |
 | LLMCostControl.Tracker.Api.Tests | 21 (6 auth + 7 endpoint + 3 import + 4 telemetry + 1 smoke) |
 | LLMCostControl.Observability.Tests | 1 |
-| LLMCostControl.Admin.App.Tests | 18 (4 auth-gated + 1 OIDC + 6 admin CRUD bUnit + 6 Postgres integration + 1 smoke) |
+| LLMCostControl.Admin.App.Tests | 24 (4 auth-gated + 1 OIDC + 6 admin CRUD bUnit + 6 CRUD Postgres + 2 reports bUnit + 2 upload bUnit + 2 query/import Postgres + 1 smoke) |
 
 > **Docker-gated tests run in WSL.** Docker isn't installed on the Windows host,
 > and in WSL both Docker Hub and nuget.org are firewalled. Recipe (see the
@@ -188,8 +188,15 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 24. **Docker tests run in WSL, not on the Windows host** (Docker isn't installed on
     Windows). In WSL both Docker Hub and nuget.org are firewalled — see the
     `wsl-test-recipe` memory and the Test Counts note for the exact env recipe.
-    The full 142-test suite is verified green via `dotnet test LLMCostControl.slnx`
+    The full 148-test suite is verified green via `dotnet test LLMCostControl.slnx`
     in WSL with that recipe.
+25. **M18 pricing upload reuses the shared `PricingImportService` (M14) with a
+    no-op publisher.** The admin app has no Orleans/cluster client, so it cannot
+    publish the `pricing-updated` stream event (§12.3); it writes via
+    `DbPricingWriter` and pricing grains pick up the change on their next store
+    reload. Read-only views go through `IAdminQueryService` (real over shared
+    repos; `FakeAdminQueryService` for bUnit). Effective-budget resolution
+    (largest-of-groups) is verified for real in the Postgres integration test.
 
 ## Key Source Files
 
@@ -285,6 +292,16 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   with `data-testid` hooks; errors surfaced via a `GuardAsync` try/catch
 - Infrastructure repo additions (M17): `GroupBudgetRepository.DeleteAsync`
   (clear), `GroupMembershipRepository.GetCallersForGroupAsync` + `ExistsAsync`
+- `Services/IAdminQueryService.cs` + `AdminQueryService.cs` (M18) — read-only:
+  caller effective-budget+spend (`BudgetResolutionRepository` + usage sum),
+  current pricing (+staleness), recent usage. `Services/CallerBudgetSummary.cs` DTO
+- `Services/NoOpPricingUpdatePublisher.cs` (M18) — admin app has no Orleans, so
+  the shared `PricingImportService` is wired with this no-op publisher; grains
+  pick up uploads via their store-reload TTL (§12.3)
+- `Components/Pages/Reports.razor` (M18, `/reports`, ReadOnlyPolicy) — caller
+  budget/spend/usage + pricing table with stale/fresh badges
+- `Components/Pages/PricingManagement.razor` (M18, `/pricing`, AdminPolicy) —
+  textarea upload → shared `PricingImportService.ImportAsync`
 
 ## Key Test Files
 
@@ -332,6 +349,13 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
   Postgres tests over the real `AdminCommandService` (own `TestDbContextFactory`)
 - `Admin.App.Tests/FakeAdminCommandService.cs` — in-memory service mirroring the
   real validation (for bUnit)
+- `Admin.App.Tests/ReportsPageTests.cs` — 2 bUnit (staleness badge, caller summary);
+  `PricingUploadPageTests.cs` — 2 bUnit (valid import / invalid errors via real
+  `PricingImportService` + `RecordingPricingWriter`)
+- `Admin.App.Tests/AdminQueryAndPricingIntegrationTests.cs` — 2 Testcontainers
+  (caller-in-two-groups → largest budget + spend/remaining; real import persists /
+  invalid writes nothing). `FakeAdminQueryService` + `RecordingPricingWriter` in
+  `FakeAdminQueryService.cs`; shared `TestDbContextFactory.cs`
 - `Admin.App.Tests/SmokeTests.cs` — 1 smoke test
 - `Infrastructure.Tests/RepositoryTestBase.cs` — Testcontainers Postgres
 - `Infrastructure.Tests/Stubs/StubPricingComponents.cs`
@@ -353,6 +377,9 @@ docker-compose.yml                  # postgres, otel-collector, loki, tempo, pro
 ## Git History (recent)
 
 ```
+b6fab47 M18: mark milestone done and tested
+37df718 M18: admin read-only views + pricing file upload
+2d54118 docs: update CONTEXT_SNAPSHOT.md after M17
 2cffc5e M17: mark milestone done and tested
 1eeb42f M17: admin CRUD for groups/budgets/membership/overrides
 58acc38 docs: update CONTEXT_SNAPSHOT.md after M16
