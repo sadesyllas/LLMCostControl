@@ -24,7 +24,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M11 | Cost accrual + usage audit trail | §6.2.2 (cost), §9.4 | M9, M10 | [x] | [x] |
 | M12 | Auth: OAuth/JWKS validation | §6.1 | M0 | [x] | [x] |
 | M13 | Tracker API: check + capture endpoints | §6.2.1, §6.2.2 | M11, M12 | [x] | [x] |
-| M14 | Localhost pricing file import endpoint | §8.3 | M5, M7 | [ ] | [ ] |
+| M14 | Localhost pricing file import endpoint | §8.3 | M5, M7 | [x] | [x] |
 | M15 | Effective-group telemetry tagging | §10.2 | M10, M11, M2 | [ ] | [ ] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | §12.1, §12.2 | M4 | [ ] | [ ] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | §12.3 | M16, M4 | [ ] | [ ] |
@@ -270,7 +270,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §8.3
 - **Depends on:** M5, M7
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - `localhost`-bound endpoint accepts a pricing file upload and feeds it through
     the same pipeline as a live fetch (shared validator from M5, persistence via
