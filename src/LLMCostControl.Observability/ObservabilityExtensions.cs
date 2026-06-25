@@ -28,6 +28,9 @@ public static class ObservabilityExtensions
                 .Enrich.WithProperty("service.version", serviceVersion)
                 .Enrich.WithProperty("deployment.environment", environment);
 
+            // Allow extensibility via ILoggerSettings registered in DI (test sinks, etc.)
+            loggerConfig.ReadFrom.Services(services);
+
             loggerConfig.WriteTo.Console(
                 theme: Serilog.Sinks.SystemConsole.Themes.SystemConsoleTheme.Literate,
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
