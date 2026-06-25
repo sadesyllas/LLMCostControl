@@ -307,6 +307,8 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             RunningSpendCurrency = currency,
             RemainingAmount = remainingAmount,
             RemainingCurrency = remainingCurrency,
+            BudgetSource = budget.Source,
+            EffectiveGroupId = budget.GroupId,
         };
     }
 
@@ -325,6 +327,8 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             RunningSpendCurrency = evt.CostCurrency,
             RemainingAmount = 0m,
             RemainingCurrency = evt.CostCurrency,
+            BudgetSource = evt.BudgetSource,
+            EffectiveGroupId = evt.EffectiveGroupId,
         };
     }
 }
