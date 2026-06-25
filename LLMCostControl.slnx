@@ -11,6 +11,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/LLMCostControl.Admin.App.Tests/LLMCostControl.Admin.App.Tests.csproj" />
     <Project Path="tests/LLMCostControl.Domain.Tests/LLMCostControl.Domain.Tests.csproj" />
+    <Project Path="tests/LLMCostControl.Grains.Tests/LLMCostControl.Grains.Tests.csproj" />
     <Project Path="tests/LLMCostControl.Infrastructure.Tests/LLMCostControl.Infrastructure.Tests.csproj" />
     <Project Path="tests/LLMCostControl.Observability.Tests/LLMCostControl.Observability.Tests.csproj" />
     <Project Path="tests/LLMCostControl.Tracker.Api.Tests/LLMCostControl.Tracker.Api.Tests.csproj" />
