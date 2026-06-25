@@ -21,26 +21,26 @@ for resuming work on **M14** and beyond.
 | M11 | Cost accrual + usage audit trail | [x] | [x] |
 | M12 | Auth: OAuth/JWKS validation | [x] | [x] |
 | M13 | Tracker API: check + capture endpoints | [x] | [x] |
-| M14 | Localhost pricing file import endpoint | [ ] | [ ] |
+| M14 | Localhost pricing file import endpoint | [x] | [x] |
 | M15 | Effective-group telemetry tagging | [ ] | [ ] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | [ ] | [ ] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | [ ] | [ ] |
 | M18 | Admin app: read-only views + pricing file upload | [ ] | [ ] |
 | M19 | Contract/conformance tests + E2E local-dev verification | [ ] | [ ] |
 
-**Next milestone: M14** — Localhost pricing file import endpoint (Spec ref §8.3,
-depends on M5, M7).
+**Next milestone: M15** — Effective-group telemetry tagging (Spec ref §10.2,
+depends on M10, M11, M2).
 
 ## Test Counts (verified green)
 
-Total: **118 tests**, all passing.
+Total: **121 tests**, all passing.
 
 | Test project | Tests |
 |--------------|------:|
 | LLMCostControl.Domain.Tests | 38 |
 | LLMCostControl.Infrastructure.Tests | 40 |
 | LLMCostControl.Grains.Tests | 24 |
-| LLMCostControl.Tracker.Api.Tests | 14 (6 auth + 7 endpoint + 1 smoke) |
+| LLMCostControl.Tracker.Api.Tests | 17 (6 auth + 7 endpoint + 1 smoke + 3 import) |
 | LLMCostControl.Observability.Tests | 1 |
 | LLMCostControl.Admin.App.Tests | 1 |
 
