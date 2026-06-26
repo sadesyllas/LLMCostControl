@@ -35,3 +35,6 @@
 
 7. **Strictly adhere to the DRY (Don't Repeat Yourself) principle.** Do not duplicate logic, boilerplate, or query patterns across handlers, repositories, or tests. If logic or patterns are repeated, abstract them into reusable helper methods, extension methods, or shared helper classes. Avoid copy-pasting code blocks.
 
+8. **Divergent SQLite / Postgres Test Mappings.** When using SQLite in-memory databases for unit testing, ensure that any database-specific behaviors or EF Core converters (e.g., `DateTimeOffsetToBinaryConverter`) do not mask compatibility or performance issues in production. Performance-critical query logic must be validated via Postgres-backed integration runs.
+
+
