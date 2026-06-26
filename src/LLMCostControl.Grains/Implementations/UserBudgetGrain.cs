@@ -52,6 +52,8 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
 
     private DateTimeOffset _budgetLoadedAt;
 
+    private BudgetPeriod? _cachedBudgetPeriod;
+
     /// <summary>
     /// Creates the grain with the given budget store, usage event store,
     /// options, time provider, and persistent state storage.
@@ -240,14 +242,16 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
     private async Task<EffectiveBudget> GetEffectiveBudgetAsync()
     {
         var now = _timeProvider.GetUtcNow();
+        var currentPeriod = CurrentPeriod();
 
-        if (_cachedBudget is not null && (now - _budgetLoadedAt) < _options.BudgetCacheTtl)
+        if (_cachedBudget is not null && _cachedBudgetPeriod == currentPeriod && (now - _budgetLoadedAt) < _options.BudgetCacheTtl)
         {
             return _cachedBudget;
         }
 
         var callerId = CallerId.From(this.GetPrimaryKeyString());
-        _cachedBudget = await _budgetStore.ResolveAsync(callerId, CurrentPeriod());
+        _cachedBudget = await _budgetStore.ResolveAsync(callerId, currentPeriod);
+        _cachedBudgetPeriod = currentPeriod;
         _budgetLoadedAt = now;
         return _cachedBudget;
     }

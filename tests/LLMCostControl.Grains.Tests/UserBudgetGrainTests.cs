@@ -598,4 +598,31 @@ public class UserBudgetGrainTests : GrainTestBase
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*different currencies*");
     }
+
+    [Fact]
+    public async Task Period_rollover_invalidates_cache_even_before_ttl_expires()
+    {
+        // Seed budgets for Jan and Feb
+        var janBudget = EffectiveBudget.FromUserOverride(new Money(100m, "USD"));
+        var febBudget = EffectiveBudget.FromUserOverride(new Money(50m, "USD"));
+        
+        BudgetStore.SetBudget("cache-rollover@example.com", janBudget);
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("cache-rollover@example.com");
+        
+        // 1. Initial call in January 2026
+        TimeProvider.SetUtcNow(new DateTimeOffset(2026, 1, 31, 23, 59, 50, TimeSpan.Zero));
+        var resJan = await grain.CheckBudgetAsync();
+        resJan.EffectiveBudgetAmount.Should().Be(100m);
+
+        // Update the mock store with the new budget for February
+        BudgetStore.SetBudget("cache-rollover@example.com", febBudget);
+
+        // 2. Advance time by 15 seconds (less than 30s TTL cache, but rolls over to February)
+        TimeProvider.SetUtcNow(new DateTimeOffset(2026, 2, 1, 0, 0, 5, TimeSpan.Zero));
+        
+        // This call should bypass cache because period changed, resolving the new Feb budget ($50)
+        var resFeb = await grain.CheckBudgetAsync();
+        resFeb.EffectiveBudgetAmount.Should().Be(50m);
+    }
 }
