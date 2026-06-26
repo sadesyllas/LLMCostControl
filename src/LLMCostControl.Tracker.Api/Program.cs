@@ -245,11 +245,32 @@ app.MapPost("/api/usage/capture", async (
 // M14: Localhost pricing file import endpoint (§8.3).
 app.MapPost("/api/pricing/import", async (
     HttpContext httpContext,
+    IConfiguration configuration,
     IDbContextFactory<CostTrackerDbContext>? contextFactory,
     IPricingUpdatePublisher pricingPublisher,
     CancellationToken ct) =>
 {
-    if (!IsLocalConnection(httpContext.Connection))
+    var allowed = IsLocalConnection(httpContext.Connection);
+    if (!allowed)
+    {
+        var configuredKey = configuration["Security:PricingImportApiKey"];
+        if (!string.IsNullOrEmpty(configuredKey))
+        {
+            if (httpContext.Request.Headers.TryGetValue("X-Admin-Api-Key", out var headerKey) &&
+                string.Equals(headerKey, configuredKey, StringComparison.Ordinal))
+            {
+                allowed = true;
+            }
+            else if (httpContext.Request.Headers.TryGetValue("Authorization", out var authHeader) &&
+                     authHeader.ToString().StartsWith("ApiKey ", StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(authHeader.ToString()["ApiKey ".Length..].Trim(), configuredKey, StringComparison.Ordinal))
+            {
+                allowed = true;
+            }
+        }
+    }
+
+    if (!allowed)
     {
         return Results.StatusCode(StatusCodes.Status403Forbidden);
     }

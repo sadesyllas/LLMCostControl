@@ -96,6 +96,7 @@ public sealed class PricingImportApiFactory : WebApplicationFactory<Program>, IA
                 ["GatewayAuth:Issuer"] = _oidcServer.Issuer,
                 ["GatewayAuth:Audience"] = _oidcServer.Audience,
                 ["Orleans:StorageConnectionString"] = "", // Empty connection string forces local membership & memory grains
+                ["Security:PricingImportApiKey"] = "test-secret-api-key",
             });
         });
 
@@ -309,6 +310,52 @@ public sealed class PricingImportEndpointTests : IClassFixture<PricingImportApiF
 
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/pricing/import");
         request.Headers.Add("X-Mock-Remote-Ip", "192.168.1.100");
+        request.Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json");
+
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Import_from_non_localhost_with_valid_header_key_allows_request()
+    {
+        await _factory.EnsureMigratedAsync();
+        var client = CreateClient();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/pricing/import");
+        request.Headers.Add("X-Mock-Remote-Ip", "192.168.1.100");
+        request.Headers.Add("X-Admin-Api-Key", "test-secret-api-key");
+        request.Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json");
+
+        var response = await client.SendAsync(request);
+        // It passes the auth block and reaches the parsing block, returning BadRequest instead of Forbidden because content is empty
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Import_from_non_localhost_with_valid_auth_header_key_allows_request()
+    {
+        await _factory.EnsureMigratedAsync();
+        var client = CreateClient();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/pricing/import");
+        request.Headers.Add("X-Mock-Remote-Ip", "192.168.1.100");
+        request.Headers.Add("Authorization", "ApiKey test-secret-api-key");
+        request.Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json");
+
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Import_from_non_localhost_with_invalid_key_returns_forbidden()
+    {
+        await _factory.EnsureMigratedAsync();
+        var client = CreateClient();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/pricing/import");
+        request.Headers.Add("X-Mock-Remote-Ip", "192.168.1.100");
+        request.Headers.Add("X-Admin-Api-Key", "wrong-key");
         request.Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json");
 
         var response = await client.SendAsync(request);
