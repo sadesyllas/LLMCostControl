@@ -18,18 +18,6 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 {
     builder.Services.AddDbContextFactory<CostTrackerDbContext>(options =>
         options.UseNpgsql(connectionString));
-    
-    // Register the scoped DbContext resolved from the factory
-    builder.Services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<CostTrackerDbContext>>().CreateDbContext());
-    
-    // Register Repositories
-    builder.Services.AddScoped<GroupRepository>();
-    builder.Services.AddScoped<GroupBudgetRepository>();
-    builder.Services.AddScoped<GroupMembershipRepository>();
-    builder.Services.AddScoped<UserBudgetOverrideRepository>();
-    builder.Services.AddScoped<ModelPricingRepository>();
-    builder.Services.AddScoped<UsageEventRepository>();
-    builder.Services.AddScoped<BudgetResolutionRepository>();
 }
 
 // Add authentication & authorization (§12.2)
