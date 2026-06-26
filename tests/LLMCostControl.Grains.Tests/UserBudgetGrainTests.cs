@@ -3,8 +3,14 @@ using LLMCostControl.Domain.Common;
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Domain.Usage;
 using LLMCostControl.Grains.Abstractions;
+using LLMCostControl.Grains.Implementations;
 using LLMCostControl.Grains.Options;
+using LLMCostControl.Grains.State;
+using LLMCostControl.Grains.Storage;
 using LLMostControl.Grains.Tests;
+using NSubstitute;
+using Orleans;
+using Orleans.Runtime;
 
 namespace LLMCostControl.Grains.Tests;
 
@@ -373,5 +379,130 @@ public class UserBudgetGrainTests : GrainTestBase
 
         second.RunningSpendAmount.Should().Be(first.RunningSpendAmount + second.CostAmount,
             "second capture should add to the running spend from the first.");
+    }
+
+    [Fact]
+    public async Task CaptureUsageAsync_deactivates_grain_on_write_state_failure()
+    {
+        // Arrange
+        var budgetStore = NSubstitute.Substitute.For<IBudgetStore>();
+        var usageEventStore = NSubstitute.Substitute.For<IUsageEventStore>();
+        var storage = NSubstitute.Substitute.For<IPersistentState<UserBudgetGrainState>>();
+        var grainContext = NSubstitute.Substitute.For<IGrainContext>();
+        var grainRuntime = NSubstitute.Substitute.For<IGrainRuntime>();
+        var timeProvider = System.TimeProvider.System;
+        
+        var options = new BudgetGrainOptions
+        {
+            BudgetCacheTtl = TimeSpan.FromSeconds(1),
+            AllowNonBudgetedUsers = false
+        };
+
+        var currentPeriod = BudgetPeriod.FromDate(timeProvider.GetUtcNow());
+        var state = new UserBudgetGrainState
+        {
+            PeriodYear = currentPeriod.Year,
+            PeriodMonth = currentPeriod.Month,
+            RunningSpendCurrency = "USD"
+        };
+        storage.State.Returns(state);
+        storage.WriteStateAsync().Returns(x => Task.FromException(new InvalidOperationException("DB error")));
+
+        var grain = new UserBudgetGrain(
+            budgetStore,
+            usageEventStore,
+            options,
+            timeProvider,
+            storage);
+
+        // Inject the mocked grain context and grain runtime via reflection so DeactivateOnIdle() doesn't throw NullReferenceException
+        var grainType = typeof(Grain);
+        var contextField = grainType.GetField("<GrainContext>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        contextField?.SetValue(grain, grainContext);
+        var runtimeField = grainType.GetField("<Runtime>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        runtimeField?.SetValue(grain, grainRuntime);
+
+        // Mock the GrainFactory lookups via the ServiceProvider on GrainContext
+        var pricingGrain = NSubstitute.Substitute.For<IPricingGrain>();
+        pricingGrain.GetPricingAsync().Returns(new PricingResult
+        {
+            Input = 2.5m,
+            Output = 10m,
+            Currency = "USD"
+        });
+
+        var grainFactory = NSubstitute.Substitute.For<IGrainFactory>();
+        grainFactory.GetGrain<IPricingGrain>("gpt-4", Arg.Any<string?>()).Returns(pricingGrain);
+
+        var serviceProvider = NSubstitute.Substitute.For<IServiceProvider>();
+        serviceProvider.GetService(typeof(IGrainFactory)).Returns(grainFactory);
+        serviceProvider.GetService(typeof(IGrainRuntime)).Returns(grainRuntime);
+
+        grainRuntime.GrainFactory.Returns(grainFactory);
+
+        grainContext.ActivationServices.Returns(serviceProvider);
+
+        // Mock GetPrimaryKeyString via GrainContext.GrainId.Key
+        var grainId = Orleans.Runtime.GrainId.Parse("UserBudgetGrain/test-user@example.com");
+        grainContext.GrainId.Returns(grainId);
+
+        // Mock budgetStore.ResolveAsync to return a valid override
+        budgetStore.ResolveAsync(Arg.Any<CallerId>(), Arg.Any<BudgetPeriod>())
+            .Returns(EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+
+        var request = new UsageCaptureRequest
+        {
+            Model = "gpt-4",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            RequestId = "test-req-fail"
+        };
+
+        // Act
+        Func<Task> action = () => grain.CaptureUsageAsync(request);
+
+        // Assert
+        await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("DB error");
+        grainRuntime.Received(1).DeactivateOnIdle(grainContext);
+    }
+
+    [Fact]
+    public void TestDeactivateOnIdleDirectly()
+    {
+        var budgetStore = NSubstitute.Substitute.For<IBudgetStore>();
+        var usageEventStore = NSubstitute.Substitute.For<IUsageEventStore>();
+        var storage = NSubstitute.Substitute.For<IPersistentState<UserBudgetGrainState>>();
+        var grainContext = NSubstitute.Substitute.For<IGrainContext>();
+        var grainRuntime = NSubstitute.Substitute.For<IGrainRuntime>();
+        var timeProvider = System.TimeProvider.System;
+        
+        var options = new BudgetGrainOptions();
+        var grain = new UserBudgetGrain(
+            budgetStore,
+            usageEventStore,
+            options,
+            timeProvider,
+            storage);
+
+        var grainType = typeof(Grain);
+        var contextField = grainType.GetField("<GrainContext>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        contextField?.SetValue(grain, grainContext);
+        var runtimeField = grainType.GetField("<Runtime>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        runtimeField?.SetValue(grain, grainRuntime);
+
+        // Let's print properties via reflection to see if they are set correctly
+        var actualContext = grain.GrainContext;
+        var actualRuntime = grainType.GetProperty("Runtime", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(grain);
+        
+        if (actualRuntime != grainRuntime)
+        {
+            throw new Exception($"Runtime not equal! Expected: {grainRuntime}, got: {actualRuntime}");
+        }
+
+        // Call DeactivateOnIdle
+        var method = grainType.GetMethod("DeactivateOnIdle", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        method?.Invoke(grain, null);
+
+        grainRuntime.Received(1).DeactivateOnIdle(grainContext);
     }
 }

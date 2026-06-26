@@ -135,9 +135,17 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
 
         // Accrue to running spend.
         var state = _storage.State;
-        state.RunningSpendAmount += cost;
-        state.RunningSpendCurrency = currency;
-        await _storage.WriteStateAsync();
+        try
+        {
+            state.RunningSpendAmount += cost;
+            state.RunningSpendCurrency = currency;
+            await _storage.WriteStateAsync();
+        }
+        catch (Exception)
+        {
+            DeactivateOnIdle();
+            throw;
+        }
 
         // Resolve effective budget for the audit row.
         var budget = await GetEffectiveBudgetAsync();
