@@ -133,12 +133,37 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
 
         var currency = pricing.Currency;
 
+        // Resolve effective budget.
+        var budget = await GetEffectiveBudgetAsync();
+
         // Accrue to running spend.
         var state = _storage.State;
+
+        // Enforce same currency as budget if budget is present
+        if (budget.HasBudget && !string.Equals(currency, budget.Amount!.Currency, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Pricing currency {currency} does not match budget currency {budget.Amount.Currency}.");
+        }
+
+        // Use domain Money to enforce currency validation with existing running spend
+        var currentSpend = new Money(state.RunningSpendAmount, state.RunningSpendCurrency);
+        var incomingCost = new Money(cost, currency);
+
+        Money newSpend;
+        if (currentSpend.IsZero)
+        {
+            newSpend = incomingCost;
+        }
+        else
+        {
+            newSpend = currentSpend + incomingCost; // Throws if currencies mismatch
+        }
+
         try
         {
-            state.RunningSpendAmount += cost;
-            state.RunningSpendCurrency = currency;
+            state.RunningSpendAmount = newSpend.Amount;
+            state.RunningSpendCurrency = newSpend.Currency;
             await _storage.WriteStateAsync();
         }
         catch (Exception)
@@ -146,9 +171,6 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             DeactivateOnIdle();
             throw;
         }
-
-        // Resolve effective budget for the audit row.
-        var budget = await GetEffectiveBudgetAsync();
 
         // Append the usage event audit row.
         var usageEvent = UsageEvent.Create(
@@ -246,20 +268,26 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
 
         if (budget.HasBudget)
         {
-            var budgetAmount = budget.Amount!.Amount;
-            var budgetCurrency = budget.Amount.Currency;
-            var remaining = budgetAmount - runningSpend;
+            var budgetMoney = budget.Amount!;
+            var runningSpendMoney = new Money(runningSpend, runningCurrency);
+
+            if (runningSpendMoney.IsZero)
+            {
+                runningSpendMoney = Money.Zero(budgetMoney.Currency);
+            }
+
+            var remainingMoney = budgetMoney - runningSpendMoney; // Throws on mismatch
 
             return new BudgetCheckResult
             {
-                Allowed = remaining > 0m,
+                Allowed = remainingMoney.Amount > 0m,
                 CallerId = callerId,
-                EffectiveBudgetAmount = budgetAmount,
-                EffectiveBudgetCurrency = budgetCurrency,
-                RunningSpendAmount = runningSpend,
-                RunningSpendCurrency = runningCurrency,
-                RemainingAmount = remaining,
-                RemainingCurrency = budgetCurrency,
+                EffectiveBudgetAmount = budgetMoney.Amount,
+                EffectiveBudgetCurrency = budgetMoney.Currency,
+                RunningSpendAmount = runningSpendMoney.Amount,
+                RunningSpendCurrency = runningSpendMoney.Currency,
+                RemainingAmount = remainingMoney.Amount,
+                RemainingCurrency = remainingMoney.Currency,
                 BudgetSource = budget.Source,
                 EffectiveGroupId = budget.GroupId,
             };
@@ -297,8 +325,12 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
 
         if (budget.HasBudget)
         {
-            remainingAmount = budget.Amount!.Amount - runningSpend;
-            remainingCurrency = budget.Amount.Currency;
+            var budgetMoney = budget.Amount!;
+            var runningSpendMoney = new Money(runningSpend, currency);
+            var remainingMoney = budgetMoney - runningSpendMoney; // Throws on mismatch
+            
+            remainingAmount = remainingMoney.Amount;
+            remainingCurrency = remainingMoney.Currency;
         }
         else
         {

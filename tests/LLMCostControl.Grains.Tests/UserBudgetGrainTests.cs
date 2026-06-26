@@ -505,4 +505,97 @@ public class UserBudgetGrainTests : GrainTestBase
 
         grainRuntime.Received(1).DeactivateOnIdle(grainContext);
     }
+
+    [Fact]
+    public async Task Capture_usage_throws_when_currency_mismatches_budget_currency()
+    {
+        BudgetStore.SetBudget("mismatch-budget@example.com",
+            EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+        Store.SetPricing("model-eur",
+            ModelPricing.Create(Provider.OpenAI, "model-eur",
+                TokenPrices.Create(2.5m, 10m), "EUR"));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("mismatch-budget@example.com");
+        
+        Func<Task> act = () => grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "model-eur",
+            TokensInput = 1000,
+            TokensOutput = 500,
+        });
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*does not match budget currency*");
+    }
+
+    [Fact]
+    public async Task Capture_usage_throws_when_currency_mismatches_existing_running_spend_currency()
+    {
+        BudgetStore.SetBudget("mismatch-spend@example.com", EffectiveBudget.None());
+        
+        Store.SetPricing("model-eur-2",
+            ModelPricing.Create(Provider.OpenAI, "model-eur-2",
+                TokenPrices.Create(2.5m, 10m), "EUR"));
+        Store.SetPricing("model-usd-2",
+            ModelPricing.Create(Provider.OpenAI, "model-usd-2",
+                TokenPrices.Create(2.5m, 10m), "USD"));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("mismatch-spend@example.com");
+
+        // First capture in EUR succeeds
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "model-eur-2",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            RequestId = "req-eur"
+        });
+
+        // Second capture in USD throws
+        Func<Task> act = () => grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "model-usd-2",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            RequestId = "req-usd"
+        });
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*different currencies*");
+    }
+
+    [Fact]
+    public async Task Check_budget_throws_when_currency_mismatches_existing_running_spend_currency()
+    {
+        // 1. Start with no budget
+        BudgetStore.SetBudget("mismatch-check@example.com", EffectiveBudget.None());
+        
+        Store.SetPricing("model-eur-3",
+            ModelPricing.Create(Provider.OpenAI, "model-eur-3",
+                TokenPrices.Create(2.5m, 10m), "EUR"));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("mismatch-check@example.com");
+
+        // 2. Capture in EUR
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "model-eur-3",
+            TokensInput = 1000,
+            TokensOutput = 500,
+            RequestId = "req-check-eur"
+        });
+
+        // 3. Now assign a budget in USD
+        BudgetStore.SetBudget("mismatch-check@example.com",
+            EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+
+        // Advance time to expire the budget cache TTL (default 1s in tests)
+        TimeProvider.Advance(TimeSpan.FromSeconds(2));
+
+        // 4. Checking budget should throw due to currency mismatch
+        Func<Task> act = () => grain.CheckBudgetAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*different currencies*");
+    }
 }
