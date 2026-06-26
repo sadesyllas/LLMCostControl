@@ -2,7 +2,7 @@ using LLMCostControl.Domain.Common;
 using LLMCostControl.Domain.Usage;
 using LLMCostControl.Grains.Storage;
 
-namespace LLMostControl.Grains.Tests;
+namespace LLMCostControl.Grains.Tests;
 
 /// <summary>
 /// In-memory stub <see cref="IUsageEventStore"/> for grain tests. Stores

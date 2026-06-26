@@ -11,7 +11,7 @@ using Orleans.Streams;
 using Orleans.TestingHost;
 using Xunit;
 
-namespace LLMostControl.Grains.Tests;
+namespace LLMCostControl.Grains.Tests;
 
 /// <summary>
 /// Shared static pricing store that both the test code and the silo's DI

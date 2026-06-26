@@ -1,4 +1,4 @@
-namespace LLMostControl.Grains.Tests;
+namespace LLMCostControl.Grains.Tests;
 
 /// <summary>
 /// A minimal <see cref="TimeProvider"/> for tests that lets the test advance

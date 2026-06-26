@@ -1,7 +1,7 @@
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Storage;
 
-namespace LLMostControl.Grains.Tests;
+namespace LLMCostControl.Grains.Tests;
 
 /// <summary>
 /// Stub <see cref="IPricingStore"/> that returns preset pricing values and

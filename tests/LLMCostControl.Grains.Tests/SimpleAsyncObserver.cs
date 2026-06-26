@@ -1,7 +1,7 @@
 using Orleans;
 using Orleans.Streams;
 
-namespace LLMostControl.Grains.Tests;
+namespace LLMCostControl.Grains.Tests;
 
 /// <summary>
 /// Simple async observer that invokes a callback on each message.

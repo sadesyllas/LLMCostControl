@@ -2,7 +2,7 @@ using LLMCostControl.Domain.Budgets;
 using LLMCostControl.Domain.Common;
 using LLMCostControl.Grains.Storage;
 
-namespace LLMostControl.Grains.Tests;
+namespace LLMCostControl.Grains.Tests;
 
 /// <summary>
 /// Stub <see cref="IBudgetStore"/> that returns preset <see cref="EffectiveBudget"/>
