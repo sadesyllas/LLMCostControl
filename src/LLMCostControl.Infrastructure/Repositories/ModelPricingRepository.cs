@@ -60,4 +60,39 @@ public class ModelPricingRepository
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
     }
+
+    /// <summary>
+    /// Replaces the pricing for multiple providers atomically in a single transaction.
+    /// For each provider in the given entries, deletes existing entries of that provider
+    /// and inserts the new ones.
+    /// </summary>
+    public async Task ReplaceMultipleProvidersPricingAsync(
+        IReadOnlyCollection<ModelPricing> entries,
+        CancellationToken ct = default)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        try
+        {
+            var providers = entries.Select(e => e.Provider).Distinct().ToList();
+            foreach (var provider in providers)
+            {
+                await _db.ModelPricing
+                    .Where(p => p.Provider == provider)
+                    .ExecuteDeleteAsync(ct);
+            }
+
+            if (entries.Count > 0)
+            {
+                await _db.ModelPricing.AddRangeAsync(entries, ct);
+            }
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+    }
 }
+

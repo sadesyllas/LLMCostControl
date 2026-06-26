@@ -163,12 +163,7 @@
             // Save transactional replacement via same repository code path (DRY)
             await using var context = await DbFactory.CreateDbContextAsync();
             var repo = new ModelPricingRepository(context);
-
-            var grouped = parseResult.Entries.GroupBy(p => p.Provider);
-            foreach (var group in grouped)
-            {
-                await repo.ReplaceProviderPricingAsync(group.Key, group.ToList());
-            }
+            await repo.ReplaceMultipleProvidersPricingAsync(parseResult.Entries);
 
             _successMessage = $"Pricing file uploaded successfully! Imported {parseResult.Entries.Count} model pricing definitions.";
             await LoadDataAsync();

@@ -297,29 +297,7 @@ app.MapPost("/api/pricing/import", async (
         await using var db = await contextFactory.CreateDbContextAsync(ct);
         var repo = new ModelPricingRepository(db);
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        try
-        {
-            var grouped = parseResult.Entries.GroupBy(e => e.Provider);
-            foreach (var group in grouped)
-            {
-                var provider = group.Key;
-                var providerEntries = group.ToList();
-
-                await db.ModelPricing
-                    .Where(p => p.Provider == provider)
-                    .ExecuteDeleteAsync(ct);
-
-                await db.ModelPricing.AddRangeAsync(providerEntries, ct);
-            }
-            await db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-        }
-        catch (Exception)
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+        await repo.ReplaceMultipleProvidersPricingAsync(parseResult.Entries, ct);
     }
 
     var groupedEntries = parseResult.Entries.GroupBy(e => e.Provider);
