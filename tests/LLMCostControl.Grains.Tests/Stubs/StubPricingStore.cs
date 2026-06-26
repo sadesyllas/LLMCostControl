@@ -22,6 +22,13 @@ public sealed class StubPricingStore : IPricingStore
     /// <summary>Removes the pricing for a model (simulates unknown model).</summary>
     public void RemovePricing(string model) => _pricing.Remove(model);
 
+    /// <summary>Resets the store to empty.</summary>
+    public void Reset()
+    {
+        _pricing.Clear();
+        _callCount = 0;
+    }
+
     /// <summary>Returns the preset pricing for the model, or null.</summary>
     public Task<ModelPricing?> GetByModelAsync(string model, CancellationToken ct = default)
     {

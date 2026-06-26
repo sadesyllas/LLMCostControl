@@ -27,6 +27,17 @@ public sealed class StubBudgetStore : IBudgetStore
     /// <summary>Removes the budget for a caller (simulates no budget / unbudgeted).</summary>
     public void RemoveBudget(string callerId) => _budgets.Remove(callerId);
 
+    /// <summary>Resets the store to empty.</summary>
+    public void Reset()
+    {
+        _budgets.Clear();
+        _callCount = 0;
+        lock (_periodsCalled)
+        {
+            _periodsCalled.Clear();
+        }
+    }
+
     /// <summary>Returns the preset budget for the caller, or <see cref="EffectiveBudget.None"/> if unset.</summary>
     public Task<EffectiveBudget> ResolveAsync(CallerId callerId, BudgetPeriod period, CancellationToken ct = default)
     {

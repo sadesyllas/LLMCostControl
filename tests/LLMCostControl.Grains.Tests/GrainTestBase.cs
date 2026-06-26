@@ -159,7 +159,7 @@ public sealed class TestClientConfigurator : IClientBuilderConfigurator
 /// Each test should use unique caller ids / model names to avoid cache
 /// interference.
 /// </summary>
-public abstract class GrainTestBase : IClassFixture<GrainClusterFixture>
+public abstract class GrainTestBase : IClassFixture<GrainClusterFixture>, IAsyncLifetime
 {
     private readonly GrainClusterFixture _fixture;
 
@@ -189,4 +189,22 @@ public abstract class GrainTestBase : IClassFixture<GrainClusterFixture>
     {
         _fixture = fixture;
     }
+
+    /// <summary>Resets the shared mock stores, options, and time before every test run.</summary>
+    public virtual Task InitializeAsync()
+    {
+        SharedPricingStore.Instance.Reset();
+        SharedBudgetStore.Instance.Reset();
+        SharedUsageEventStore.Instance.Reset();
+
+        SharedBudgetOptions.Instance.BudgetCacheTtl = TimeSpan.FromSeconds(1);
+        SharedBudgetOptions.Instance.AllowNonBudgetedUsers = false;
+
+        SharedTimeProvider.Instance.SetUtcNow(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Performs post-test cleanup.</summary>
+    public virtual Task DisposeAsync() => Task.CompletedTask;
 }
