@@ -28,12 +28,12 @@ public class ModelPricingRepository
         => _db.ModelPricing.Where(p => p.Provider == provider).ToListAsync(ct);
 
     /// <summary>
-    /// Adds or replaces pricing for a model (upsert by model name) and saves.
+    /// Adds or replaces pricing for a model (upsert by provider and model name) and saves.
     /// </summary>
     public async Task UpsertAsync(ModelPricing pricing, CancellationToken ct = default)
     {
         var existing = await _db.ModelPricing
-            .FirstOrDefaultAsync(p => p.Model == pricing.Model, ct);
+            .FirstOrDefaultAsync(p => p.Provider == pricing.Provider && p.Model == pricing.Model, ct);
 
         if (existing is not null)
         {

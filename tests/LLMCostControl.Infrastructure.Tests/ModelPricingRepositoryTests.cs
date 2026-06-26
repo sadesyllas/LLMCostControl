@@ -1,6 +1,7 @@
 using LLMCostControl.Domain.Common;
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Infrastructure.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace LLMCostControl.Infrastructure.Tests;
 
@@ -61,5 +62,33 @@ public class ModelPricingRepositoryTests : RepositoryTestBase
         openai.Should().HaveCount(2);
         openai.Select(p => p.Model).Should().BeEquivalentTo(["gpt-4o", "o1"]);
         (await repo.GetByModelAsync("gpt-4o-mini")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Allows_duplicate_model_names_across_different_providers()
+    {
+        var repo = new ModelPricingRepository(Db);
+        await repo.UpsertAsync(ModelPricing.Create(
+            Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m)));
+        await repo.UpsertAsync(ModelPricing.Create(
+            Provider.Google, "gpt-4o", TokenPrices.Create(3.0m, 12m)));
+
+        var all = await repo.GetAllAsync();
+        all.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Rejects_duplicate_model_names_for_same_provider_via_database_constraint()
+    {
+        var repo = new ModelPricingRepository(Db);
+        await repo.UpsertAsync(ModelPricing.Create(
+            Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m)));
+
+        // Bypass UpsertAsync and try to add duplicate directly to DB to trigger constraint
+        await Db.ModelPricing.AddAsync(ModelPricing.Create(
+            Provider.OpenAI, "gpt-4o", TokenPrices.Create(3.0m, 12m)));
+
+        Func<Task> act = () => Db.SaveChangesAsync();
+        await act.Should().ThrowAsync<DbUpdateException>();
     }
 }

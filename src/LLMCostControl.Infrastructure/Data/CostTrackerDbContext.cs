@@ -162,7 +162,7 @@ public class CostTrackerDbContext : DbContext
             e.Property(x => x.Unit).IsRequired().HasMaxLength(30);
             e.Property(x => x.FetchedAt).IsRequired();
             e.Property(x => x.StaleSince);
-            e.HasIndex(x => x.Model).IsUnique();
+            e.HasIndex(x => new { x.Provider, x.Model }).IsUnique();
         });
     }
 
