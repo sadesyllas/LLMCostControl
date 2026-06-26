@@ -7,6 +7,7 @@ using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions;
 using LLMCostControl.Grains.Options;
 using LLMCostControl.Grains.Storage;
+using LLMCostControl.Grains.Tests;
 using LLMCostControl.Tracker.Api.Endpoints;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -201,6 +202,8 @@ public sealed class TrackerApiFactory : WebApplicationFactory<Program>
     public void ResetStubs()
     {
         BudgetOptions.AllowNonBudgetedUsers = false;
+        PricingStore.Reset();
+        BudgetStore.Reset();
         UsageEventStore.Reset();
     }
 

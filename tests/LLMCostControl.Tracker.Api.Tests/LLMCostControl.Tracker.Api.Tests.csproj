@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\LLMCostControl.Tracker.Api\LLMCostControl.Tracker.Api.csproj" />
+    <ProjectReference Include="..\LLMCostControl.Grains.Tests\LLMCostControl.Grains.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>
