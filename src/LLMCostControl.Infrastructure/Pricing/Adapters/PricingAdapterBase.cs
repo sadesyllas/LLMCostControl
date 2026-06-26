@@ -1,3 +1,4 @@
+using System.Net.Http;
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Infrastructure.Repositories;
 
@@ -48,6 +49,34 @@ public abstract class PricingAdapterBase : IPricingAdapter
     /// the fallback.
     /// </summary>
     protected abstract Task<IReadOnlyCollection<ModelPricing>> FetchLiveAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Fetches the canonical pricing JSON from a source URL, parses it, validates it,
+    /// and filters the entries to only include those belonging to the specified provider.
+    /// </summary>
+    /// <param name="httpClient">The HTTP client used to perform the fetch.</param>
+    /// <param name="sourceUrl">The URL containing the JSON pricing file.</param>
+    /// <param name="ct">The cancellation token.</param>
+    /// <returns>A collection of parsed and validated pricing models for this provider.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the parsed file is invalid.</exception>
+    protected async Task<IReadOnlyCollection<ModelPricing>> FetchAndFilterLiveAsync(
+        HttpClient httpClient,
+        string sourceUrl,
+        CancellationToken ct)
+    {
+        var json = await httpClient.GetStringAsync(sourceUrl, ct);
+        var result = PricingFileValidator.Parse(json);
+
+        if (!result.IsValid)
+        {
+            throw new InvalidOperationException(
+                $"{Provider} pricing source returned an invalid file: {string.Join("; ", result.Errors)}");
+        }
+
+        return result.Entries
+            .Where(e => e.Provider == Provider)
+            .ToList();
+    }
 
     private async Task<IReadOnlyCollection<ModelPricing>> FallbackToPersistedAsync(CancellationToken ct)
     {

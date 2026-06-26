@@ -33,19 +33,6 @@ public sealed class OpenAIPricingAdapter : PricingAdapterBase
     /// Fetches live pricing from the configured source URL and parses the
     /// canonical pricing file, filtering to OpenAI entries only.
     /// </summary>
-    protected override async Task<IReadOnlyCollection<ModelPricing>> FetchLiveAsync(CancellationToken ct)
-    {
-        var json = await _httpClient.GetStringAsync(_sourceUrl, ct);
-        var result = PricingFileValidator.Parse(json);
-
-        if (!result.IsValid)
-        {
-            throw new InvalidOperationException(
-                $"OpenAI pricing source returned an invalid file: {string.Join("; ", result.Errors)}");
-        }
-
-        return result.Entries
-            .Where(e => e.Provider == Provider.OpenAI)
-            .ToList();
-    }
+    protected override Task<IReadOnlyCollection<ModelPricing>> FetchLiveAsync(CancellationToken ct)
+        => FetchAndFilterLiveAsync(_httpClient, _sourceUrl, ct);
 }
