@@ -19,9 +19,10 @@ namespace LLMCostControl.Admin.App.Tests;
 /// bUnit tests for the Model Pricing page (§12.3, M18).
 /// Exercises views, staleness badges, and valid/invalid JSON pricing uploads.
 /// </summary>
+[Collection("PostgresCollection")]
 public sealed class PricingViewTests : TestContext, IDisposable
 {
-    private readonly SqliteTestDbContextFactory _dbFactory;
+    private readonly PostgresTestDbContextFactory _dbFactory;
 
     private static readonly string ValidJson = """
     {
@@ -52,19 +53,19 @@ public sealed class PricingViewTests : TestContext, IDisposable
     /// Initializes a new instance of the <see cref="PricingViewTests"/> class.
     /// Setup JSInterop mocks for InputFile integration.
     /// </summary>
-    public PricingViewTests()
+    public PricingViewTests(PostgresFixture fixture)
     {
-        _dbFactory = new SqliteTestDbContextFactory();
+        _dbFactory = new PostgresTestDbContextFactory(fixture.ConnectionString);
+        _dbFactory.ResetDatabase();
         Services.AddSingleton<IDbContextFactory<CostTrackerDbContext>>(_dbFactory);
 
         // Mock InputFile JS initialization
         JSInterop.SetupVoid("Blazor._internal.InputFile.init", _ => true).SetVoidResult();
     }
 
-    /// <summary>Disposes of the SQLite in-memory database connection.</summary>
+    /// <summary>Disposes of the test services.</summary>
     public new void Dispose()
     {
-        _dbFactory.Dispose();
         base.Dispose();
     }
 
@@ -81,9 +82,13 @@ public sealed class PricingViewTests : TestContext, IDisposable
 
         // Act
         var cut = RenderComponent<Pricing>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // Assert
-        cut.Markup.Should().Contain("No pricing models defined in the database. Upload a pricing file to initialize model rates.");
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("No pricing models defined in the database. Upload a pricing file to initialize model rates.");
+        });
     }
 
     /// <summary>
@@ -122,21 +127,25 @@ public sealed class PricingViewTests : TestContext, IDisposable
 
         // Act
         var cut = RenderComponent<Pricing>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // Assert
-        cut.Find("#pricing-table").Should().NotBeNull();
-        cut.Find("#pricing-row-gpt-4o-fresh").Should().NotBeNull();
-        cut.Find("#pricing-row-gemini-1-5-pro").Should().NotBeNull();
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("#pricing-table").Should().NotBeNull();
+            cut.Find("#pricing-row-gpt-4o-fresh").Should().NotBeNull();
+            cut.Find("#pricing-row-gemini-1-5-pro").Should().NotBeNull();
 
-        // Freshness verification
-        var freshRow = cut.Find("#pricing-row-gpt-4o-fresh");
-        freshRow.TextContent.Should().Contain("gpt-4o-fresh");
-        freshRow.TextContent.Should().Contain("Fresh");
+            // Freshness verification
+            var freshRow = cut.Find("#pricing-row-gpt-4o-fresh");
+            freshRow.TextContent.Should().Contain("gpt-4o-fresh");
+            freshRow.TextContent.Should().Contain("Fresh");
 
-        // Staleness verification
-        var staleRow = cut.Find("#pricing-row-gemini-1-5-pro");
-        staleRow.TextContent.Should().Contain("gemini-1.5-pro");
-        staleRow.TextContent.Should().Contain("Stale");
+            // Staleness verification
+            var staleRow = cut.Find("#pricing-row-gemini-1-5-pro");
+            staleRow.TextContent.Should().Contain("gemini-1.5-pro");
+            staleRow.TextContent.Should().Contain("Stale");
+        });
     }
 
     /// <summary>
@@ -152,15 +161,19 @@ public sealed class PricingViewTests : TestContext, IDisposable
         authContext.SetRoles("CostTracker.Admin");
 
         var cut = RenderComponent<Pricing>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // Act
         var inputFile = cut.FindComponent<InputFile>();
         var fileToUpload = InputFileContent.CreateFromText(ValidJson, "pricing.json");
-        await cut.InvokeAsync(() => inputFile.UploadFiles(fileToUpload));
+        inputFile.UploadFiles(fileToUpload);
 
         // Assert success message is displayed
-        var successAlert = cut.Find("#pricing-success-alert");
-        successAlert.TextContent.Should().Contain("Pricing file uploaded successfully! Imported 1 model pricing definitions.");
+        cut.WaitForAssertion(() =>
+        {
+            var successAlert = cut.Find("#pricing-success-alert");
+            successAlert.TextContent.Should().Contain("Pricing file uploaded successfully! Imported 1 model pricing definitions.");
+        });
 
         // Assert database is populated
         using (var db = _dbFactory.CreateDbContext())
@@ -182,15 +195,19 @@ public sealed class PricingViewTests : TestContext, IDisposable
         authContext.SetRoles("CostTracker.Admin");
 
         var cut = RenderComponent<Pricing>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // Act
         var inputFile = cut.FindComponent<InputFile>();
         var fileToUpload = InputFileContent.CreateFromText("{}", "invalid.json");
-        await cut.InvokeAsync(() => inputFile.UploadFiles(fileToUpload));
+        inputFile.UploadFiles(fileToUpload);
 
         // Assert error message is displayed
-        var errorAlert = cut.Find("#pricing-error-alert");
-        errorAlert.TextContent.Should().Contain("Pricing file validation failed");
+        cut.WaitForAssertion(() =>
+        {
+            var errorAlert = cut.Find("#pricing-error-alert");
+            errorAlert.TextContent.Should().Contain("Pricing file validation failed");
+        });
 
         // Assert database is still empty
         using (var db = _dbFactory.CreateDbContext())
@@ -213,8 +230,12 @@ public sealed class PricingViewTests : TestContext, IDisposable
 
         // Act
         var cut = RenderComponent<Pricing>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // Assert upload inputs are hidden
-        cut.FindAll("#pricing-file-input").Should().BeEmpty();
+        cut.WaitForAssertion(() =>
+        {
+            cut.FindAll("#pricing-file-input").Should().BeEmpty();
+        });
     }
 }

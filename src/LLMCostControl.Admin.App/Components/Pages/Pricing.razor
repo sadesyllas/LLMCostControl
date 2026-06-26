@@ -114,9 +114,13 @@
     {
         try
         {
-            await using var context = await DbFactory.CreateDbContextAsync();
-            var repo = new ModelPricingRepository(context);
-            _pricingModels = await repo.GetAllAsync();
+            var models = await Task.Run(async () =>
+            {
+                await using var context = await DbFactory.CreateDbContextAsync();
+                var repo = new ModelPricingRepository(context);
+                return await repo.GetAllAsync();
+            });
+            _pricingModels = models;
         }
         catch (Exception ex)
         {
@@ -148,9 +152,12 @@
             }
 
             // Save transactional replacement via same repository code path (DRY)
-            await using var context = await DbFactory.CreateDbContextAsync();
-            var repo = new ModelPricingRepository(context);
-            await repo.ReplaceMultipleProvidersPricingAsync(parseResult.Entries);
+            await Task.Run(async () =>
+            {
+                await using var context = await DbFactory.CreateDbContextAsync();
+                var repo = new ModelPricingRepository(context);
+                await repo.ReplaceMultipleProvidersPricingAsync(parseResult.Entries);
+            });
 
             _successMessage = $"Pricing file uploaded successfully! Imported {parseResult.Entries.Count} model pricing definitions.";
             await LoadDataAsync();

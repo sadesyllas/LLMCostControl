@@ -44,25 +44,23 @@ public class ModelPricingRepository
         await _db.SaveChangesAsync(ct);
     }
 
-    /// <summary>Replaces all pricing for a provider in a single transaction.</summary>
+    /// <summary>Replaces all pricing for a provider in a single atomic operation.</summary>
     public async Task ReplaceProviderPricingAsync(
         Provider provider,
         IReadOnlyCollection<ModelPricing> entries,
         CancellationToken ct = default)
     {
-        await using var tx = await _db.Database.BeginTransactionAsync(ct);
-
-        await _db.ModelPricing
+        var existing = await _db.ModelPricing
             .Where(p => p.Provider == provider)
-            .ExecuteDeleteAsync(ct);
+            .ToListAsync(ct);
 
+        _db.ModelPricing.RemoveRange(existing);
         await _db.ModelPricing.AddRangeAsync(entries, ct);
         await _db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
     }
 
     /// <summary>
-    /// Replaces the pricing for multiple providers atomically in a single transaction.
+    /// Replaces the pricing for multiple providers atomically.
     /// For each provider in the given entries, deletes existing entries of that provider
     /// and inserts the new ones.
     /// </summary>
@@ -70,29 +68,20 @@ public class ModelPricingRepository
         IReadOnlyCollection<ModelPricing> entries,
         CancellationToken ct = default)
     {
-        await using var tx = await _db.Database.BeginTransactionAsync(ct);
-        try
+        var providers = entries.Select(e => e.Provider).Distinct().ToList();
+        foreach (var provider in providers)
         {
-            var providers = entries.Select(e => e.Provider).Distinct().ToList();
-            foreach (var provider in providers)
-            {
-                await _db.ModelPricing
-                    .Where(p => p.Provider == provider)
-                    .ExecuteDeleteAsync(ct);
-            }
+            var existing = await _db.ModelPricing
+                .Where(p => p.Provider == provider)
+                .ToListAsync(ct);
+            _db.ModelPricing.RemoveRange(existing);
+        }
 
-            if (entries.Count > 0)
-            {
-                await _db.ModelPricing.AddRangeAsync(entries, ct);
-            }
-            await _db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-        }
-        catch
+        if (entries.Count > 0)
         {
-            await tx.RollbackAsync(ct);
-            throw;
+            await _db.ModelPricing.AddRangeAsync(entries, ct);
         }
+        await _db.SaveChangesAsync(ct);
     }
 }
 

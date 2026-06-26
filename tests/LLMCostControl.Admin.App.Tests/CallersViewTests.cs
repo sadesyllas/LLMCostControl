@@ -19,25 +19,26 @@ namespace LLMCostControl.Admin.App.Tests;
 /// <summary>
 /// bUnit tests for the Callers & Spend monitoring view (§12.3, M18).
 /// </summary>
+[Collection("PostgresCollection")]
 public sealed class CallersViewTests : TestContext, IDisposable
 {
-    private readonly SqliteTestDbContextFactory _dbFactory;
+    private readonly PostgresTestDbContextFactory _dbFactory;
     private readonly ITestOutputHelper _output;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CallersViewTests"/> class.
     /// </summary>
-    public CallersViewTests(ITestOutputHelper output)
+    public CallersViewTests(PostgresFixture fixture, ITestOutputHelper output)
     {
         _output = output;
-        _dbFactory = new SqliteTestDbContextFactory();
+        _dbFactory = new PostgresTestDbContextFactory(fixture.ConnectionString);
+        _dbFactory.ResetDatabase();
         Services.AddSingleton<IDbContextFactory<CostTrackerDbContext>>(_dbFactory);
     }
 
-    /// <summary>Disposes of the SQLite in-memory database connection.</summary>
+    /// <summary>Disposes of the test services.</summary>
     public new void Dispose()
     {
-        _dbFactory.Dispose();
         base.Dispose();
     }
 
@@ -54,9 +55,13 @@ public sealed class CallersViewTests : TestContext, IDisposable
 
         // Act
         var cut = RenderComponent<Callers>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // Assert
-        cut.Markup.Should().Contain("No active callers or budget allocations found in the system.");
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("No active callers or budget allocations found in the system.");
+        });
     }
 
     /// <summary>
@@ -114,6 +119,7 @@ public sealed class CallersViewTests : TestContext, IDisposable
 
         // Act
         var cut = RenderComponent<Callers>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // Assert table renders caller with effective budget (largest: 75.00 USD), spend, and source.
         cut.WaitForAssertion(() =>

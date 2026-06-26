@@ -19,20 +19,21 @@ namespace LLMCostControl.Admin.App.Tests;
 /// bUnit tests for the Groups CRUD capabilities (§12.3, M17).
 /// Exercises creating, renaming, deleting, budgeting, and member additions/removals.
 /// </summary>
+[Collection("PostgresCollection")]
 public sealed class GroupCrudTests : TestContext, IDisposable
 {
-    private readonly SqliteTestDbContextFactory _dbFactory;
+    private readonly PostgresTestDbContextFactory _dbFactory;
 
-    public GroupCrudTests()
+    public GroupCrudTests(PostgresFixture fixture)
     {
-        _dbFactory = new SqliteTestDbContextFactory();
+        _dbFactory = new PostgresTestDbContextFactory(fixture.ConnectionString);
+        _dbFactory.ResetDatabase();
         Services.AddSingleton<IDbContextFactory<CostTrackerDbContext>>(_dbFactory);
     }
 
-    /// <summary>Disposes of the SQLite in-memory database connection.</summary>
+    /// <summary>Disposes of the test services.</summary>
     public new void Dispose()
     {
-        _dbFactory.Dispose();
         base.Dispose();
     }
 
@@ -44,12 +45,16 @@ public sealed class GroupCrudTests : TestContext, IDisposable
         authContext.SetAuthorized("admin@example.com");
         authContext.SetRoles("CostTracker.Admin");
 
-        // 2. Render Page
+        // 2. Render Page & Wait for Load
         var cut = RenderComponent<Groups>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // 3. Create Group
         cut.Find("#newGroupName").Change("engineering");
         await cut.InvokeAsync(() => cut.Find("#btn-create-group").Click());
+
+        // Assert rendered
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("engineering"));
 
         // Assert created in DB
         using (var db = _dbFactory.CreateDbContext())
@@ -58,9 +63,6 @@ public sealed class GroupCrudTests : TestContext, IDisposable
             groups.Should().ContainSingle(g => g.Name == "engineering");
         }
 
-        // Assert rendered
-        cut.Markup.Should().Contain("engineering");
-
         // Get group ID from DB to query card
         Guid groupId;
         using (var db = _dbFactory.CreateDbContext())
@@ -68,7 +70,7 @@ public sealed class GroupCrudTests : TestContext, IDisposable
             groupId = (await db.Groups.FirstAsync(g => g.Name == "engineering")).Id;
         }
         var groupCard = cut.Find($"#group-{groupId}");
-        groupCard.Should().NotBeNull();
+        cut.WaitForAssertion(() => groupCard.Should().NotBeNull());
 
         // 4. Set Group Budget
         var amountInput = cut.Find($"#group-{groupId} .input-budget-amount");
@@ -79,7 +81,10 @@ public sealed class GroupCrudTests : TestContext, IDisposable
         currencySelect.Change("USD");
         await cut.InvokeAsync(() => setBudgetBtn.Click());
 
-        // Assert budget saved
+        // Assert budget rendered
+        cut.WaitForAssertion(() => cut.Find($"#group-{groupId} .budget-amount-display").TextContent.Should().Contain("500.00"));
+
+        // Assert budget saved in DB
         using (var db = _dbFactory.CreateDbContext())
         {
             var budget = await db.GroupBudgets.FirstOrDefaultAsync(b => b.GroupId == groupId);
@@ -87,7 +92,6 @@ public sealed class GroupCrudTests : TestContext, IDisposable
             budget!.Amount.Amount.Should().Be(500.00m);
             budget.Amount.Currency.Should().Be("USD");
         }
-        cut.Find($"#group-{groupId} .budget-amount-display").TextContent.Should().Contain("500.00");
 
         // 5. Add Member to Group
         var memberInput = cut.Find($"#group-{groupId} .input-member-email");
@@ -96,13 +100,15 @@ public sealed class GroupCrudTests : TestContext, IDisposable
         memberInput.Change("developer@example.com");
         await cut.InvokeAsync(() => addMemberBtn.Click());
 
-        // Assert member saved
+        // Assert member rendered
+        cut.WaitForAssertion(() => cut.Find($"#group-{groupId} .members-list").TextContent.Should().Contain("developer@example.com"));
+
+        // Assert member saved in DB
         using (var db = _dbFactory.CreateDbContext())
         {
             var members = await db.GroupMemberships.Where(m => m.GroupId == groupId).ToListAsync();
             members.Should().ContainSingle(m => m.CallerId.Value == "developer@example.com");
         }
-        cut.Find($"#group-{groupId} .members-list").TextContent.Should().Contain("developer@example.com");
 
         // 6. Rename Group
         var renameBtn = cut.Find($"#group-{groupId} .btn-rename-group");
@@ -114,49 +120,57 @@ public sealed class GroupCrudTests : TestContext, IDisposable
         nameInput.Change("engineering-team");
         await cut.InvokeAsync(() => saveRenameBtn.Click());
 
-        // Assert rename saved
+        // Assert rename rendered
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("engineering-team"));
+
+        // Assert rename saved in DB
         using (var db = _dbFactory.CreateDbContext())
         {
             var group = await db.Groups.FindAsync(groupId);
             group!.Name.Should().Be("engineering-team");
         }
-        cut.Markup.Should().Contain("engineering-team");
 
         // 7. Remove Member
         var removeMemberBtn = cut.Find($"#group-{groupId} .btn-remove-member");
         await cut.InvokeAsync(() => removeMemberBtn.Click());
 
-        // Assert member removed
+        // Assert member removed visually
+        cut.WaitForAssertion(() => cut.Find($"#group-{groupId}").TextContent.Should().Contain("No members assigned to this group."));
+
+        // Assert member removed in DB
         using (var db = _dbFactory.CreateDbContext())
         {
             var anyMember = await db.GroupMemberships.AnyAsync(m => m.GroupId == groupId);
             anyMember.Should().BeFalse();
         }
-        cut.Find($"#group-{groupId}").TextContent.Should().Contain("No members assigned to this group.");
 
         // 8. Clear Budget
         var clearBudgetBtn = cut.Find($"#group-{groupId} .btn-clear-budget");
         await cut.InvokeAsync(() => clearBudgetBtn.Click());
 
-        // Assert budget cleared
+        // Assert budget cleared visually
+        cut.WaitForAssertion(() => cut.Find($"#group-{groupId} .budget-amount-display").TextContent.Should().Contain("No budget set for current period."));
+
+        // Assert budget cleared in DB
         using (var db = _dbFactory.CreateDbContext())
         {
             var anyBudget = await db.GroupBudgets.AnyAsync(b => b.GroupId == groupId);
             anyBudget.Should().BeFalse();
         }
-        cut.Find($"#group-{groupId} .budget-amount-display").TextContent.Should().Contain("No budget set for current period.");
 
         // 9. Delete Group
         var deleteGroupBtn = cut.Find($"#group-{groupId} .btn-delete-group");
         await cut.InvokeAsync(() => deleteGroupBtn.Click());
 
-        // Assert group deleted
+        // Assert group deleted visually
+        cut.WaitForAssertion(() => cut.FindAll($"#group-{groupId}").Should().BeEmpty());
+
+        // Assert group deleted in DB
         using (var db = _dbFactory.CreateDbContext())
         {
             var anyGroup = await db.Groups.AnyAsync(g => g.Id == groupId);
             anyGroup.Should().BeFalse();
         }
-        cut.FindAll($"#group-{groupId}").Should().BeEmpty();
     }
 
     [Fact]
@@ -177,21 +191,25 @@ public sealed class GroupCrudTests : TestContext, IDisposable
 
         // Act
         var cut = RenderComponent<Groups>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // Assert
-        cut.Markup.Should().Contain("marketing");
-        
-        // Admin create elements should be hidden
-        cut.FindAll("#newGroupName").Should().BeEmpty();
-        cut.FindAll("#btn-create-group").Should().BeEmpty();
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("marketing");
+            
+            // Admin create elements should be hidden
+            cut.FindAll("#newGroupName").Should().BeEmpty();
+            cut.FindAll("#btn-create-group").Should().BeEmpty();
 
-        // Admin action buttons on group card should be hidden
-        cut.FindAll($".btn-rename-group").Should().BeEmpty();
-        cut.FindAll($".btn-delete-group").Should().BeEmpty();
-        cut.FindAll($".input-budget-amount").Should().BeEmpty();
-        cut.FindAll($".btn-set-budget").Should().BeEmpty();
-        cut.FindAll($".input-member-email").Should().BeEmpty();
-        cut.FindAll($".btn-add-member").Should().BeEmpty();
-        cut.FindAll($".btn-remove-member").Should().BeEmpty();
+            // Admin action buttons on group card should be hidden
+            cut.FindAll($".btn-rename-group").Should().BeEmpty();
+            cut.FindAll($".btn-delete-group").Should().BeEmpty();
+            cut.FindAll($".input-budget-amount").Should().BeEmpty();
+            cut.FindAll($".btn-set-budget").Should().BeEmpty();
+            cut.FindAll($".input-member-email").Should().BeEmpty();
+            cut.FindAll($".btn-add-member").Should().BeEmpty();
+            cut.FindAll($".btn-remove-member").Should().BeEmpty();
+        });
     }
 }
