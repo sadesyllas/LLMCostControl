@@ -50,7 +50,7 @@ if (authOptions.IsEnabled)
         .AddJwtBearer(jwt =>
         {
             jwt.MetadataAddress = authOptions.JwksEndpoint;
-            jwt.RequireHttpsMetadata = false;
+            jwt.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
             jwt.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = !string.IsNullOrWhiteSpace(authOptions.Issuer),
