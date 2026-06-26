@@ -1,0 +1,86 @@
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="alert alert-@TypeClass @(Dismissible ? "alert-dismissible" : "") @CssClass" role="alert" id="@ElementId">
+        @if (ShowHeader)
+        {
+            <strong>@Title:</strong> @(" ")
+        }
+        @Message
+        @if (Dismissible)
+        {
+            <button type="button" class="btn-close" @onclick="Dismiss" aria-label="Close"></button>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Supported types of bootstrap alerts.
+    /// </summary>
+    public enum AlertType
+    {
+        /// <summary>A success alert (green background).</summary>
+        Success,
+        /// <summary>A danger alert (red background).</summary>
+        Danger,
+        /// <summary>A warning alert (yellow background).</summary>
+        Warning,
+        /// <summary>An informational alert (blue background).</summary>
+        Info
+    }
+
+    /// <summary>The message content to display.</summary>
+    [Parameter]
+    public string? Message { get; set; }
+
+    /// <summary>The alert type determining the styling.</summary>
+    [Parameter]
+    public AlertType Type { get; set; } = AlertType.Danger;
+
+    /// <summary>Optional DOM element ID.</summary>
+    [Parameter]
+    public string? ElementId { get; set; }
+
+    /// <summary>Whether the alert can be closed/dismissed by the user.</summary>
+    [Parameter]
+    public bool Dismissible { get; set; } = true;
+
+    /// <summary>Whether to show the strong header label prefix (e.g. "Error:").</summary>
+    [Parameter]
+    public bool ShowHeader { get; set; } = true;
+
+    /// <summary>Additional CSS classes to apply to the alert wrapper.</summary>
+    [Parameter]
+    public string CssClass { get; set; } = "mb-4 shadow-sm";
+
+    /// <summary>Callback invoked when the alert is closed.</summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private string TypeClass => Type switch
+    {
+        AlertType.Success => "success",
+        AlertType.Danger => "danger",
+        AlertType.Warning => "warning",
+        AlertType.Info => "info",
+        _ => "secondary"
+    };
+
+    private string Title => Type switch
+    {
+        AlertType.Success => "Success",
+        AlertType.Danger => "Error",
+        AlertType.Warning => "Warning",
+        AlertType.Info => "Info",
+        _ => "Notification"
+    };
+
+    private async Task Dismiss()
+    {
+        Message = null;
+        if (OnClose.HasDelegate)
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+}

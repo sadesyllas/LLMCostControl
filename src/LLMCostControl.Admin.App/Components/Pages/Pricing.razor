@@ -16,21 +16,8 @@
         </div>
     </div>
 
-    @if (!string.IsNullOrWhiteSpace(_errorMessage))
-    {
-        <div class="alert alert-danger alert-dismissible mb-4 shadow-sm" role="alert" id="pricing-error-alert">
-            <strong>Error:</strong> @_errorMessage
-            <button type="button" class="btn-close" @onclick="() => _errorMessage = null" aria-label="Close"></button>
-        </div>
-    }
-
-    @if (!string.IsNullOrWhiteSpace(_successMessage))
-    {
-        <div class="alert alert-success alert-dismissible mb-4 shadow-sm" role="alert" id="pricing-success-alert">
-            <strong>Success:</strong> @_successMessage
-            <button type="button" class="btn-close" @onclick="() => _successMessage = null" aria-label="Close"></button>
-        </div>
-    }
+    <AlertMessage Message="@_errorMessage" Type="AlertMessage.AlertType.Danger" ElementId="pricing-error-alert" OnClose="() => _errorMessage = null" />
+    <AlertMessage Message="@_successMessage" Type="AlertMessage.AlertType.Success" ElementId="pricing-success-alert" OnClose="() => _successMessage = null" />
 
     <AuthorizeView Roles="CostTracker.Admin">
         <Authorized>
