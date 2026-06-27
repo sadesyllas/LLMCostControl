@@ -20,7 +20,7 @@ public interface IUserBudgetGrain : IGrainWithStringKey
     /// <summary>
     /// Captures token usage, computes cost via <c>PricingGrain</c>, accrues it
     /// to the caller's running spend, and appends an audit row (§6.2.2, §9.4).
-    /// Idempotent via <paramref name="requestId"/> when supplied.
+    /// Idempotent via RequestId inside the request when supplied.
     /// </summary>
     Task<UsageCaptureResult> CaptureUsageAsync(UsageCaptureRequest request);
 }

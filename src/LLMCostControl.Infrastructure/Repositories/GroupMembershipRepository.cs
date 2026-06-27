@@ -42,4 +42,15 @@ public class GroupMembershipRepository
         => _db.GroupMemberships
             .Where(m => m.GroupId == groupId)
             .ToListAsync(ct);
+
+    /// <summary>Checks if a caller is already a member of a group.</summary>
+    public Task<bool> IsMemberAsync(Guid groupId, CallerId callerId, CancellationToken ct = default)
+        => _db.GroupMemberships.AnyAsync(m => m.GroupId == groupId && m.CallerId == callerId, ct);
+
+    /// <summary>Returns distinct caller IDs across all memberships.</summary>
+    public Task<List<CallerId>> GetDistinctCallersAsync(CancellationToken ct = default)
+        => _db.GroupMemberships
+            .Select(m => m.CallerId)
+            .Distinct()
+            .ToListAsync(ct);
 }

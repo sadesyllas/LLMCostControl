@@ -11,4 +11,8 @@
     <NoWarn>NU1608;NU1603</NoWarn>
   </PropertyGroup>
 
+  <PropertyGroup Condition="!$(MSBuildProjectName.EndsWith('.Tests'))">
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
 </Project>

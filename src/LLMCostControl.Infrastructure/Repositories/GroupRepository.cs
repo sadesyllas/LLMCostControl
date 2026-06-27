@@ -41,4 +41,16 @@ public class GroupRepository
     {
         await _db.Groups.Where(g => g.Id == id).ExecuteDeleteAsync(ct);
     }
+
+    /// <summary>
+    /// Deletes a group and all its associated budgets and memberships in a cascading transaction.
+    /// </summary>
+    public async Task DeleteGroupCascadingAsync(Guid id, CancellationToken ct = default)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        await _db.GroupBudgets.Where(b => b.GroupId == id).ExecuteDeleteAsync(ct);
+        await _db.GroupMemberships.Where(m => m.GroupId == id).ExecuteDeleteAsync(ct);
+        await _db.Groups.Where(g => g.Id == id).ExecuteDeleteAsync(ct);
+        await tx.CommitAsync(ct);
+    }
 }

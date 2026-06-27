@@ -57,4 +57,11 @@ public class UsageEventRepository
     /// </summary>
     public Task<UsageEvent?> GetByIdAsync(string eventId, CancellationToken ct = default)
         => _db.UsageEvents.FirstOrDefaultAsync(e => e.EventId == eventId, ct);
+
+    /// <summary>Returns distinct caller IDs across all usage events.</summary>
+    public Task<List<CallerId>> GetDistinctCallersAsync(CancellationToken ct = default)
+        => _db.UsageEvents
+            .Select(e => e.CallerId)
+            .Distinct()
+            .ToListAsync(ct);
 }

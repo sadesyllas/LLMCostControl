@@ -214,11 +214,13 @@
             await using var context = await DbFactory.CreateDbContextAsync();
             var budgetResolutionRepo = new BudgetResolutionRepository(context);
             var usageEventRepo = new UsageEventRepository(context);
+            var membershipRepo = new GroupMembershipRepository(context);
+            var overrideRepo = new UserBudgetOverrideRepository(context);
 
-            // Fetch distinct caller emails from all linked aggregates
-            var members = (await context.GroupMemberships.Select(m => m.CallerId).ToListAsync()).Select(c => c.Value);
-            var overrides = (await context.UserBudgetOverrides.Select(o => o.CallerId).ToListAsync()).Select(c => c.Value);
-            var usageEvents = (await context.UsageEvents.Select(e => e.CallerId).ToListAsync()).Select(c => c.Value);
+            // Fetch distinct caller emails from all linked aggregates via repositories
+            var members = (await membershipRepo.GetDistinctCallersAsync()).Select(c => c.Value);
+            var overrides = (await overrideRepo.GetDistinctCallersAsync()).Select(c => c.Value);
+            var usageEvents = (await usageEventRepo.GetDistinctCallersAsync()).Select(c => c.Value);
 
             var emails = members
                 .Concat(overrides)

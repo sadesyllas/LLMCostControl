@@ -58,4 +58,11 @@ public class UserBudgetOverrideRepository
         => _db.UserBudgetOverrides
             .Where(o => o.Period == period)
             .ToListAsync(ct);
+
+    /// <summary>Returns distinct caller IDs across all overrides.</summary>
+    public Task<List<CallerId>> GetDistinctCallersAsync(CancellationToken ct = default)
+        => _db.UserBudgetOverrides
+            .Select(o => o.CallerId)
+            .Distinct()
+            .ToListAsync(ct);
 }

@@ -139,7 +139,7 @@ app.MapPost("/api/budget/check", async (
     using (Serilog.Context.LogContext.PushProperty("budget_source", budgetSourceStr))
     {
         app.Logger.LogInformation("Budget check for {CallerId}: allowed={Allowed}, source={Source}, group={Group}",
-            request.CallerId, result.Allowed, budgetSourceStr, effectiveGroupStr);
+            ObservabilityExtensions.AnonymizeCallerId(request.CallerId), result.Allowed, budgetSourceStr, effectiveGroupStr);
     }
 
     var response = new BudgetCheckResponse
@@ -170,6 +170,11 @@ app.MapPost("/api/usage/capture", async (
     if (string.IsNullOrWhiteSpace(request.Model))
     {
         return Results.BadRequest(new ErrorResponse { Error = "invalid_request", Detail = "model is required." });
+    }
+
+    if (request.Tokens.Input < 0 || request.Tokens.Output < 0 || request.Tokens.CacheRead < 0 || request.Tokens.CacheWrite < 0)
+    {
+        return Results.BadRequest(new ErrorResponse { Error = "invalid_request", Detail = "Token counts cannot be negative." });
     }
 
     var grain = grainFactory.GetGrain<IUserBudgetGrain>(request.CallerId);
@@ -208,7 +213,7 @@ app.MapPost("/api/usage/capture", async (
         using (Serilog.Context.LogContext.PushProperty("budget_source", budgetSourceStr))
         {
             app.Logger.LogInformation("Usage captured for {CallerId}: model={Model}, cost={Cost} {Currency}, source={Source}, group={Group}",
-                request.CallerId, request.Model, result.CostAmount, result.CostCurrency, budgetSourceStr, effectiveGroupStr);
+                ObservabilityExtensions.AnonymizeCallerId(request.CallerId), request.Model, result.CostAmount, result.CostCurrency, budgetSourceStr, effectiveGroupStr);
         }
 
         var response = new UsageCaptureResponse

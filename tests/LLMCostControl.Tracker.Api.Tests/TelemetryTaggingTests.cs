@@ -235,6 +235,7 @@ public sealed class TelemetryTaggingTests : IClassFixture<TelemetryWebAppFactory
 
         // Verify traces (Activities) with a retry loop to eliminate race condition
         var expectedGroupStr = groupId?.ToString() ?? "None";
+        var anonCallerId = LLMCostControl.Observability.ObservabilityExtensions.AnonymizeCallerId(callerId);
         List<System.Diagnostics.Activity> relevantActivities = new();
 
         for (int i = 0; i < 20; i++)
@@ -243,7 +244,7 @@ public sealed class TelemetryTaggingTests : IClassFixture<TelemetryWebAppFactory
             {
                 relevantActivities = activities
                     .Where(a => a.OperationName == "Microsoft.AspNetCore.Hosting.HttpRequestIn" &&
-                                a.Tags.Any(t => t.Key == "caller_id" && (string?)t.Value == callerId))
+                                a.Tags.Any(t => t.Key == "caller_id" && (string?)t.Value == anonCallerId))
                     .ToList();
             }
 
@@ -264,12 +265,12 @@ public sealed class TelemetryTaggingTests : IClassFixture<TelemetryWebAppFactory
         // Verify metrics (exposing at least llm_budget_checks_total and llm_usage_captures_total)
         var checkMeasurements = measurements
             .Where(m => m.InstrumentName == "llm_budget_checks_total" &&
-                        m.Tags.TryGetValue("caller_id", out var cid) && cid as string == callerId)
+                        m.Tags.TryGetValue("caller_id", out var cid) && cid as string == anonCallerId)
             .ToList();
 
         var captureMeasurements = measurements
             .Where(m => m.InstrumentName == "llm_usage_captures_total" &&
-                        m.Tags.TryGetValue("caller_id", out var cid) && cid as string == callerId)
+                        m.Tags.TryGetValue("caller_id", out var cid) && cid as string == anonCallerId)
             .ToList();
 
         checkMeasurements.Should().NotBeEmpty();
@@ -285,7 +286,7 @@ public sealed class TelemetryTaggingTests : IClassFixture<TelemetryWebAppFactory
         {
             var relevantLogs = MemorySink.Events
                 .Where(e => (e.MessageTemplate.Text.Contains("Budget check for") || e.MessageTemplate.Text.Contains("Usage captured for")) &&
-                            e.Properties.TryGetValue("CallerId", out var cid) && cid.ToString().Contains(callerId))
+                            e.Properties.TryGetValue("CallerId", out var cid) && cid.ToString().Contains(anonCallerId))
                 .ToList();
 
             relevantLogs.Should().HaveCount(2);

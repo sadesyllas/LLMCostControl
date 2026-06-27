@@ -17,10 +17,23 @@ namespace LLMCostControl.Observability;
 public static class ObservabilityExtensions
 {
     /// <summary>
+    /// Anonymizes a caller identifier (email) by hashing it with SHA-256 to protect PII in telemetry.
+    /// </summary>
+    /// <param name="callerId">The raw caller identifier email.</param>
+    /// <returns>The hexadecimal representation of the SHA-256 hash.</returns>
+    public static string AnonymizeCallerId(string callerId)
+    {
+        if (string.IsNullOrWhiteSpace(callerId)) return string.Empty;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(callerId.Trim().ToLowerInvariant());
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
     /// Sets standardized telemetry tags on the current activity for effective group and budget source tracking (§10.2).
     /// </summary>
     /// <param name="activity">The activity to tag.</param>
-    /// <param name="callerId">The caller identifier.</param>
+    /// <param name="callerId">The caller identifier (will be anonymized to protect PII).</param>
     /// <param name="effectiveGroup">The effective group ID or "None".</param>
     /// <param name="budgetSource">The budget source (e.g. Group, UserOverride, None).</param>
     public static void SetTelemetryTags(this Activity? activity, string callerId, string effectiveGroup, string budgetSource)
@@ -29,9 +42,15 @@ public static class ObservabilityExtensions
         {
             activity.SetTag("effective_group", effectiveGroup);
             activity.SetTag("budget_source", budgetSource);
-            activity.SetTag("caller_id", callerId);
+            activity.SetTag("caller_id", AnonymizeCallerId(callerId));
         }
     }
+    /// <summary>
+    /// Configures Serilog for logging, console sink, and Otlp logs exporter if configured.
+    /// </summary>
+    /// <param name="hostBuilder">The host builder to configure.</param>
+    /// <param name="serviceName">The name of the service.</param>
+    /// <returns>The configured host builder.</returns>
     public static IHostBuilder UseObservability(this IHostBuilder hostBuilder, string serviceName)
     {
         return hostBuilder.UseSerilog((context, services, loggerConfig) =>
@@ -76,6 +95,12 @@ public static class ObservabilityExtensions
         });
     }
 
+    /// <summary>
+    /// Configures OpenTelemetry tracing and metrics with appropriate instrumentation and Otlp exporter.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <param name="serviceName">The name of the service.</param>
+    /// <returns>The configured builder.</returns>
     public static IHostApplicationBuilder ConfigureObservability(
         this IHostApplicationBuilder builder,
         string serviceName)

@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using LLMCostControl.Observability;
 
 namespace LLMCostControl.Tracker.Api.Observability;
 
@@ -54,9 +55,10 @@ public sealed class TrackerMetrics
     /// <param name="budgetSource">The source of the budget.</param>
     public void RecordBudgetCheck(string callerId, string outcome, string effectiveGroup, string budgetSource)
     {
+        var anonCallerId = ObservabilityExtensions.AnonymizeCallerId(callerId);
         _checkRequests.Add(1, new KeyValuePair<string, object?>[]
         {
-            new("caller_id", callerId),
+            new("caller_id", anonCallerId),
             new("outcome", outcome),
             new("effective_group", effectiveGroup),
             new("budget_source", budgetSource)
@@ -90,9 +92,10 @@ public sealed class TrackerMetrics
         string effectiveGroup,
         string budgetSource)
     {
+        var anonCallerId = ObservabilityExtensions.AnonymizeCallerId(callerId);
         var tags = new KeyValuePair<string, object?>[]
         {
-            new("caller_id", callerId),
+            new("caller_id", anonCallerId),
             new("outcome", outcome),
             new("model", model),
             new("effective_group", effectiveGroup),
@@ -105,7 +108,7 @@ public sealed class TrackerMetrics
         {
             var costTags = new KeyValuePair<string, object?>[]
             {
-                new("caller_id", callerId),
+                new("caller_id", anonCallerId),
                 new("model", model),
                 new("currency", currency),
                 new("effective_group", effectiveGroup),
@@ -113,20 +116,20 @@ public sealed class TrackerMetrics
             };
             _captureCost.Add((double)cost, costTags);
 
-            RecordTokens(callerId, model, "input", inputTokens, effectiveGroup, budgetSource);
-            RecordTokens(callerId, model, "output", outputTokens, effectiveGroup, budgetSource);
-            RecordTokens(callerId, model, "cache_read", cacheReadTokens, effectiveGroup, budgetSource);
-            RecordTokens(callerId, model, "cache_write", cacheWriteTokens, effectiveGroup, budgetSource);
+            RecordTokens(anonCallerId, model, "input", inputTokens, effectiveGroup, budgetSource);
+            RecordTokens(anonCallerId, model, "output", outputTokens, effectiveGroup, budgetSource);
+            RecordTokens(anonCallerId, model, "cache_read", cacheReadTokens, effectiveGroup, budgetSource);
+            RecordTokens(anonCallerId, model, "cache_write", cacheWriteTokens, effectiveGroup, budgetSource);
         }
     }
 
-    private void RecordTokens(string callerId, string model, string type, long count, string effectiveGroup, string budgetSource)
+    private void RecordTokens(string anonCallerId, string model, string type, long count, string effectiveGroup, string budgetSource)
     {
         if (count <= 0) return;
 
         _tokensCaptured.Add(count, new KeyValuePair<string, object?>[]
         {
-            new("caller_id", callerId),
+            new("caller_id", anonCallerId),
             new("model", model),
             new("token_type", type),
             new("effective_group", effectiveGroup),

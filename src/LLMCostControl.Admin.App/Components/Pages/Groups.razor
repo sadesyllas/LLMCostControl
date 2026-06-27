@@ -335,14 +335,9 @@
         try
         {
             await using var context = await DbFactory.CreateDbContextAsync();
-            await using var tx = await context.Database.BeginTransactionAsync();
+            var groupRepo = new GroupRepository(context);
+            await groupRepo.DeleteGroupCascadingAsync(id);
 
-            // Cascade delete associations in code to keep DB clean
-            await context.GroupBudgets.Where(b => b.GroupId == id).ExecuteDeleteAsync();
-            await context.GroupMemberships.Where(m => m.GroupId == id).ExecuteDeleteAsync();
-            await context.Groups.Where(g => g.Id == id).ExecuteDeleteAsync();
-
-            await tx.CommitAsync();
             _globalSuccessMessage = "Group deleted successfully.";
             _globalErrorMessage = null;
             await LoadDataAsync();
@@ -415,8 +410,7 @@
             await using var context = await DbFactory.CreateDbContextAsync();
             var membershipRepo = new GroupMembershipRepository(context);
 
-            var existing = await context.GroupMemberships
-                .AnyAsync(m => m.GroupId == model.Id && m.CallerId == callerId);
+            var existing = await membershipRepo.IsMemberAsync(model.Id, callerId);
 
             if (existing)
             {
