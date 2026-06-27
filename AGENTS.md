@@ -37,4 +37,6 @@
 
 8. **Divergent SQLite / Postgres Test Mappings.** When using SQLite in-memory databases for unit testing, ensure that any database-specific behaviors or EF Core converters (e.g., `DateTimeOffsetToBinaryConverter`) do not mask compatibility or performance issues in production. Performance-critical query logic must be validated via Postgres-backed integration runs.
 
+9. **Always keep `SPEC.md` up-to-date.** Any changes to application architecture, endpoint designs, validation logic, configurations, or core features must be immediately and accurately reflected in `SPEC.md`. Never let code changes drift from the specification.
+
 
