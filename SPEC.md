@@ -468,6 +468,7 @@ PostgreSQL is the single source of truth for:
   `UserBudgetGrain` at decision time (the same values persisted to the audit row
   per §9.4) and propagated into the current activity/log context for the duration
   of the request.
+- **PII Protection & Anonymization (required):** To prevent leaking Personal Identifiable Information (PII) like email addresses into public telemetry backends (Traces, Metrics, Logs) and to avoid high-cardinality metric label explosions, any recording of `caller_id` in telemetry must be anonymized. The system must hash the caller ID using HMAC-SHA-256 with a configuration-driven secret `TelemetryPepper`. If no pepper is configured, it must fallback to a stable default to ensure metric consistency across application restarts.
 
 ### 10.3 Configuration
 
