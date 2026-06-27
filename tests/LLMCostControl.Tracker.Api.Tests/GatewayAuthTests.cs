@@ -125,6 +125,7 @@ public sealed class AuthWebAppFactory : WebApplicationFactory<Program>
                 // Override the connection string so the test silo uses
                 // localhost clustering + memory storage (no DB needed).
                 ["Orleans:StorageConnectionString"] = "",
+                ["Observability:TelemetryPepper"] = "test-telemetry-pepper",
             });
         });
 

@@ -99,11 +99,6 @@ builder.Services.AddSingleton<TrackerMetrics>();
 
 var app = builder.Build();
 
-if (ObservabilityExtensions.TelemetryPepper == "LLMCostControlTelemetryDefaultSecurePepper_DoNotUseInProduction")
-{
-    app.Logger.LogWarning("TelemetryPepper configuration is missing! Telemetry caller IDs are anonymized using a default fallback pepper. For production environments, configure a unique 'TelemetryPepper' under the 'Observability' section in appsettings.json to prevent potential dictionary attacks on hashes.");
-}
-
 if (authOptions.IsEnabled)
 {
     app.UseAuthentication();

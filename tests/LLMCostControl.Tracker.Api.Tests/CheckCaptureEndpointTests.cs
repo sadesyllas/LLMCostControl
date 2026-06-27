@@ -220,6 +220,7 @@ public sealed class TrackerApiFactory : WebApplicationFactory<Program>
                 ["GatewayAuth:Issuer"] = _oidcServer.Issuer,
                 ["GatewayAuth:Audience"] = _oidcServer.Audience,
                 ["Orleans:StorageConnectionString"] = "",
+                ["Observability:TelemetryPepper"] = "test-telemetry-pepper",
             });
         });
 

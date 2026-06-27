@@ -16,11 +16,12 @@ namespace LLMCostControl.Observability;
 /// </summary>
 public static class ObservabilityExtensions
 {
-    private static string _telemetryPepper = "LLMCostControlTelemetryDefaultSecurePepper_DoNotUseInProduction";
+    private static string _telemetryPepper = string.Empty;
 
     /// <summary>
     /// Gets or sets the pepper used to cryptographically salt caller ID hashes in telemetry.
-    /// Defaults to a stable fallback string if not configured.
+    /// Must be configured in appsettings.json/environment.
+    /// Changing this value will alter generated hashes, which will make historical metrics correlation problematic.
     /// </summary>
     public static string TelemetryPepper
     {
@@ -76,10 +77,11 @@ public static class ObservabilityExtensions
             var environment = context.HostingEnvironment.EnvironmentName;
 
             var pepper = cfg.GetValue<string>("TelemetryPepper");
-            if (!string.IsNullOrWhiteSpace(pepper))
+            if (string.IsNullOrWhiteSpace(pepper))
             {
-                TelemetryPepper = pepper;
+                throw new InvalidOperationException("TelemetryPepper configuration is missing! For cryptographic security, telemetry caller IDs must be hashed using HMAC-SHA-256 and a secret pepper. Configure a unique 'TelemetryPepper' under the 'Observability' section in appsettings.json. Note: changing the pepper in the future will alter generated hashes, which will make historical metrics correlation problematic.");
             }
+            TelemetryPepper = pepper;
 
             loggerConfig
                 .MinimumLevel.Is(minLevel)
@@ -132,10 +134,11 @@ public static class ObservabilityExtensions
         var otlpEndpoint = cfg.GetValue<string>("Otlp:Endpoint");
 
         var pepper = cfg.GetValue<string>("TelemetryPepper");
-        if (!string.IsNullOrWhiteSpace(pepper))
+        if (string.IsNullOrWhiteSpace(pepper))
         {
-            TelemetryPepper = pepper;
+            throw new InvalidOperationException("TelemetryPepper configuration is missing! For cryptographic security, telemetry caller IDs must be hashed using HMAC-SHA-256 and a secret pepper. Configure a unique 'TelemetryPepper' under the 'Observability' section in appsettings.json. Note: changing the pepper in the future will alter generated hashes, which will make historical metrics correlation problematic.");
         }
+        TelemetryPepper = pepper;
 
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService(

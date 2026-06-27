@@ -81,6 +81,7 @@ public sealed class TelemetryWebAppFactory : WebApplicationFactory<Program>
                 ["GatewayAuth:Issuer"] = _oidcServer.Issuer,
                 ["GatewayAuth:Audience"] = _oidcServer.Audience,
                 ["Orleans:StorageConnectionString"] = "",
+                ["Observability:TelemetryPepper"] = "test-telemetry-pepper",
             });
         });
 
