@@ -20,11 +20,11 @@
   <ItemGroup>
     <!-- Auth -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
-    <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.6.1" />
-    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.6.1" />
-    <PackageVersion Include="Microsoft.Identity.Web" Version="3.8.0" />
-    <PackageVersion Include="Microsoft.Identity.Web.UI" Version="3.8.0" />
-    <PackageVersion Include="System.Security.Cryptography.Xml" Version="9.0.2" />
+    <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.7.0" />
+    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.7.0" />
+    <PackageVersion Include="Microsoft.Identity.Web" Version="3.8.2" />
+    <PackageVersion Include="Microsoft.Identity.Web.UI" Version="3.8.2" />
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="9.0.15" />
   </ItemGroup>
 
   <ItemGroup>
