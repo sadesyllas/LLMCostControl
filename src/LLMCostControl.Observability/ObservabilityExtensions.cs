@@ -16,17 +16,32 @@ namespace LLMCostControl.Observability;
 /// </summary>
 public static class ObservabilityExtensions
 {
+    private static string _telemetryPepper = Guid.NewGuid().ToString();
+
     /// <summary>
-    /// Anonymizes a caller identifier (email) by hashing it with SHA-256 to protect PII in telemetry.
+    /// Gets or sets the pepper used to cryptographically salt caller ID hashes in telemetry.
+    /// Defaults to a random GUID generated at application startup if not configured.
+    /// </summary>
+    public static string TelemetryPepper
+    {
+        get => _telemetryPepper;
+        set => _telemetryPepper = value ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Anonymizes a caller identifier (email) by hashing it with HMAC-SHA-256 and a secret pepper to protect PII in telemetry.
     /// </summary>
     /// <param name="callerId">The raw caller identifier email.</param>
-    /// <returns>The hexadecimal representation of the SHA-256 hash.</returns>
+    /// <returns>The hexadecimal representation of the keyed hash.</returns>
     public static string AnonymizeCallerId(string callerId)
     {
         if (string.IsNullOrWhiteSpace(callerId)) return string.Empty;
-        var bytes = System.Text.Encoding.UTF8.GetBytes(callerId.Trim().ToLowerInvariant());
-        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        var normalized = callerId.Trim().ToLowerInvariant();
+        var keyBytes = System.Text.Encoding.UTF8.GetBytes(_telemetryPepper);
+        var valueBytes = System.Text.Encoding.UTF8.GetBytes(normalized);
+        using var hmac = new System.Security.Cryptography.HMACSHA256(keyBytes);
+        var hashBytes = hmac.ComputeHash(valueBytes);
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
     /// <summary>
@@ -59,6 +74,12 @@ public static class ObservabilityExtensions
             var minLevel = cfg.GetValue("MinimumLevel", LogEventLevel.Information);
             var serviceVersion = cfg.GetValue("ServiceVersion", "1.0.0")!;
             var environment = context.HostingEnvironment.EnvironmentName;
+
+            var pepper = cfg.GetValue<string>("TelemetryPepper");
+            if (!string.IsNullOrWhiteSpace(pepper))
+            {
+                TelemetryPepper = pepper;
+            }
 
             loggerConfig
                 .MinimumLevel.Is(minLevel)
@@ -109,6 +130,12 @@ public static class ObservabilityExtensions
         var serviceVersion = cfg.GetValue("ServiceVersion", "1.0.0")!;
         var environment = builder.Environment.EnvironmentName;
         var otlpEndpoint = cfg.GetValue<string>("Otlp:Endpoint");
+
+        var pepper = cfg.GetValue<string>("TelemetryPepper");
+        if (!string.IsNullOrWhiteSpace(pepper))
+        {
+            TelemetryPepper = pepper;
+        }
 
         builder.Services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService(
