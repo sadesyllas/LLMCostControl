@@ -239,26 +239,23 @@ one.
      back to the most recently persisted value in the DB and emits a
      **staleness signal** (e.g. a `staleSince` timestamp and the age of the
      last good value) so consumers can react or alert.
-  3. In addition, every adapter supports a **local file import** source,
-     reachable only via a `localhost`-bound endpoint (see §8.3). The file must
+  3. In addition, the system supports a **manual pricing file upload** interface
+     served entirely within the Entra ID-protected Admin App (see §8.3). The file must
      fully describe all required values per model, per provider, in a single,
      well-defined schema (see §8.5). This enables offline/air-gapped operation
      and manual correction of pricing without depending on a live provider
      source.
 
-### 8.3 Local file import (localhost only)
+### 8.3 Manual pricing file upload (Admin App only)
 
-- A dedicated endpoint, bound to `localhost` only (not exposed externally),
-  accepts a pricing file upload and feeds it through the same adapter pipeline
-  as a live fetch.
-- The endpoint is served on each silo / the refresh job host; in a multi-instance
-  deployment it is reachable only from the same machine.
-- The file format is the canonical schema in §8.5. An import is rejected
-  atomically if any model entry is missing a required field or is malformed;
-  partial imports are not performed.
-- Imported values are written to PostgreSQL by the refresh job exactly as live
-  fetches are, and become visible to pricing grains via the same update path
-   (see §8.6).
+- A dedicated file upload interface is exposed in the Admin App, protected by
+  Entra ID and requiring the `CostTracker.Admin` role.
+- The file format must comply with the canonical schema defined in §8.5. The upload
+  is validated via a shared parser and is rejected atomically if any model entry is
+  missing a required field or is malformed (no partial imports).
+- Imported values are written directly to PostgreSQL using the shared repository
+  code, and become visible to pricing grains automatically within their 30-second cache
+  TTL (see §8.6).
 
 ### 8.4 Pricing refresh job
 
@@ -273,7 +270,7 @@ one.
 
 ### 8.5 Canonical pricing file schema
 
-The file (used by both the localhost import endpoint and as the reference shape
+The file (used by the Admin App manual upload and as the reference shape
 for adapter fetch results) must describe, **per provider, per model**, all
 required unit prices. The schema (shown here as JSON for clarity; the on-disk
 format may be JSON or YAML):
@@ -348,7 +345,7 @@ refresh job (§8.4) writes new prices to PostgreSQL, it publishes a
 `pricing-updated` event (carrying the affected model names, or a full snapshot)
 onto an **Orleans stream** (`StreamNamespace = "pricing"`). `PricingGrain`
 instances subscribe to this stream and refresh their in-memory value on push,
-giving near-immediate freshness after a live fetch or a localhost file import,
+giving near-immediate freshness after a live fetch, or within the 30-second cache TTL after an Admin App manual upload,
 with no polling tax on the DB.
 
 **Grain placement — `PricingGrain` is a `[StatelessWorker]` local grain:**
@@ -445,7 +442,7 @@ PostgreSQL is the single source of truth for:
 
 - The tracker is **fully instrumented** with the **OpenTelemetry SDK**:
   - **Traces** (distributed tracing) for all inbound HTTP requests (check /
-    capture / localhost import) and outbound calls (provider adapter fetches,
+    capture) and outbound calls (provider adapter fetches,
     DB access via Orleans storage).
   - **Metrics** exposing at minimum:
     - Request counters & histograms per endpoint (check, capture), with outcome
@@ -499,8 +496,7 @@ libraries. Indicative layout:
 │   │                                  #   Postgres-specific concerns,
 │   │                                  #   pricing adapter abstractions &
 │   │                                  #   implementations
-│   ├── LLMCostControl.Tracker.Api/    # ASP.NET Core API host (check/capture,
-│   │                                  #   localhost import endpoint) +
+│   ├── LLMCostControl.Tracker.Api/    # ASP.NET Core API host (check/capture endpoints) +
 │   │                                  #   Orleans silo host (UserBudgetGrain,
 │   │                                  #   PricingGrain, refresh job)
 │   └── LLMCostControl.Admin.App/      # Blazor admin app (see §12)
@@ -593,10 +589,9 @@ Admin user ──►  Blazor Admin App  ──►  PostgreSQL
   - Recent usage events (from the append-only ledger) for a caller id.
 - **Pricing file management:** upload a canonical pricing file (§8.5) through the
   UI. The admin app validates it against the shared schema and **writes it to
-  PostgreSQL via the same code path the tracker's localhost import endpoint
-  uses** (shared from `Infrastructure`), so the refresh job / pricing grains pick
-  it up via the stream. (The admin app itself does not publish the stream event;
-  the shared write routine does, or the next refresh tick propagates it.)
+  PostgreSQL via the same code path the tracker uses** (shared from `Infrastructure`),
+  so the pricing grains pick it up automatically within their 30-second cache TTL
+  (see §8.3 and §8.6).
 
 ### 12.4 Consistency with grains
 
@@ -747,6 +742,6 @@ To be specified in a follow-up section of this document:
 | --- | --- | --- |
 | Q1 | Token subject (gateway vs. end user) | **Resolved** — gateway principal; caller id supplied as field and trusted. |
 | Q2 | No-budget caller behaviour | **Resolved** — fail-closed by default; configurable via `AllowNonBudgetedUsers` (default `false`). |
-| Q3 | Pricing source strategy | **Resolved** — hybrid (live fetch + persisted fallback + staleness) plus localhost file import with canonical schema. |
+| Q3 | Pricing source strategy | **Resolved** — hybrid (live fetch + persisted fallback + staleness) plus manual pricing file upload via the Admin App. |
 | Q4 | Pricing grain refresh mechanism | **Resolved** — Orleans streams (push); `PricingGrain` is a `[StatelessWorker]` local grain with multiple activations per silo. See §8.6. |
 | Q5 | Grain-side invalidation of budget/group data after admin writes | **Resolved** — 30 s TTL; each `UserBudgetGrain` re-reads the effective budget from the DB at most every 30 s. Configurable via `BudgetCacheTtlSeconds` (default `30`). See §12.4. |
