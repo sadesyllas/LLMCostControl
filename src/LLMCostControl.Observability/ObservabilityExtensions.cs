@@ -16,11 +16,11 @@ namespace LLMCostControl.Observability;
 /// </summary>
 public static class ObservabilityExtensions
 {
-    private static string _telemetryPepper = Guid.NewGuid().ToString();
+    private static string _telemetryPepper = "LLMCostControlTelemetryDefaultSecurePepper_DoNotUseInProduction";
 
     /// <summary>
     /// Gets or sets the pepper used to cryptographically salt caller ID hashes in telemetry.
-    /// Defaults to a random GUID generated at application startup if not configured.
+    /// Defaults to a stable fallback string if not configured.
     /// </summary>
     public static string TelemetryPepper
     {
