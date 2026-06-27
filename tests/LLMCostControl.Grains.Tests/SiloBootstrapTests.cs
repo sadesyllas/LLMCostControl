@@ -27,9 +27,9 @@ public class SiloBootstrapTests : GrainTestBase
     [Fact]
     public async Task PricingGrain_returns_pricing()
     {
-        Store.SetPricing("gpt-4o", ModelPricing.Create(
+        Store.SetPricing(ModelPricing.Create(
             Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m, 1.25m)));
-        var grain = GrainFactory.GetGrain<IPricingGrain>("gpt-4o");
+        var grain = GrainFactory.GetGrain<IPricingGrain>(ProviderResolver.Key(Provider.OpenAI, "gpt-4o"));
 
         var result = await grain.GetPricingAsync();
 
@@ -43,7 +43,7 @@ public class SiloBootstrapTests : GrainTestBase
     {
         BudgetStore.SetBudget("capture@example.com",
             EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
-        Store.SetPricing("gpt-4o", ModelPricing.Create(
+        Store.SetPricing(ModelPricing.Create(
             Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m, 1.25m)));
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("capture@example.com");
 

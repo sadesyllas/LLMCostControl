@@ -11,8 +11,8 @@ namespace LLMCostControl.Grains.Storage;
 public interface IPricingStore
 {
     /// <summary>
-    /// Returns the current pricing for the given model name, or null when the
-    /// model is unknown / not in the allowed set.
+    /// Returns the current pricing for the given (provider, model) pair, or null
+    /// when it is unknown / not in the allowed set (§8.5).
     /// </summary>
-    Task<ModelPricing?> GetByModelAsync(string model, CancellationToken ct = default);
+    Task<ModelPricing?> GetAsync(Provider provider, string model, CancellationToken ct = default);
 }

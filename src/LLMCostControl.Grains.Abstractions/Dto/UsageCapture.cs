@@ -13,6 +13,13 @@ public sealed record UsageCaptureRequest
     [Id(0)]
     public required string Model { get; init; }
 
+    /// <summary>
+    /// Optional provider (<c>openai</c> | <c>anthropic</c> | <c>google</c>). When
+    /// omitted or unrecognised, the grain infers it from the model name (§6.2.3).
+    /// </summary>
+    [Id(6)]
+    public string? Provider { get; init; }
+
     /// <summary>Non-cached input token count.</summary>
     [Id(1)]
     public long TokensInput { get; init; }

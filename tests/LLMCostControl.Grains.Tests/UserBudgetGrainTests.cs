@@ -173,7 +173,7 @@ public class UserBudgetGrainTests : GrainTestBase
     {
         BudgetStore.SetBudget("capture-m11@example.com",
             EffectiveBudget.FromUserOverride(Usd(100m)));
-        Store.SetPricing("gpt-4o",
+        Store.SetPricing(
             ModelPricing.Create(Provider.OpenAI, "gpt-4o",
                 TokenPrices.Create(2.5m, 10m, 1.25m)));
 
@@ -196,7 +196,7 @@ public class UserBudgetGrainTests : GrainTestBase
     {
         BudgetStore.SetBudget("mixed-cost@example.com",
             EffectiveBudget.FromUserOverride(Usd(100m)));
-        Store.SetPricing("claude-3",
+        Store.SetPricing(
             ModelPricing.Create(Provider.Anthropic, "claude-3",
                 TokenPrices.Create(3m, 15m, 0.3m, 3.75m)));
 
@@ -222,7 +222,7 @@ public class UserBudgetGrainTests : GrainTestBase
         var groupId = Guid.NewGuid();
         BudgetStore.SetBudget("audit@example.com",
             EffectiveBudget.FromGroup(Usd(500m), groupId));
-        Store.SetPricing("gpt-4o",
+        Store.SetPricing(
             ModelPricing.Create(Provider.OpenAI, "gpt-4o",
                 TokenPrices.Create(2.5m, 10m, 1.25m)));
 
@@ -262,7 +262,7 @@ public class UserBudgetGrainTests : GrainTestBase
     {
         BudgetStore.SetBudget("idempotent@example.com",
             EffectiveBudget.FromUserOverride(Usd(100m)));
-        Store.SetPricing("gpt-4o",
+        Store.SetPricing(
             ModelPricing.Create(Provider.OpenAI, "gpt-4o",
                 TokenPrices.Create(2.5m, 10m)));
 
@@ -311,11 +311,45 @@ public class UserBudgetGrainTests : GrainTestBase
     }
 
     [Fact]
+    public async Task Capture_resolves_pricing_per_provider_for_a_shared_model_name()
+    {
+        // Same model name under two providers, priced differently (§8.5).
+        Store.SetPricing(ModelPricing.Create(Provider.OpenAI, "shared-model",
+            TokenPrices.Create(1m, 1m)));
+        Store.SetPricing(ModelPricing.Create(Provider.Anthropic, "shared-model",
+            TokenPrices.Create(2m, 2m)));
+
+        BudgetStore.SetBudget("shared-openai@example.com", EffectiveBudget.FromUserOverride(Usd(100m)));
+        BudgetStore.SetBudget("shared-anthropic@example.com", EffectiveBudget.FromUserOverride(Usd(100m)));
+
+        var openAiGrain = GrainFactory.GetGrain<IUserBudgetGrain>("shared-openai@example.com");
+        var anthropicGrain = GrainFactory.GetGrain<IUserBudgetGrain>("shared-anthropic@example.com");
+
+        // 1M input tokens → cost == provider's input price.
+        var openAiResult = await openAiGrain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "shared-model",
+            Provider = "openai",
+            TokensInput = 1_000_000,
+        });
+
+        var anthropicResult = await anthropicGrain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "shared-model",
+            Provider = "anthropic",
+            TokensInput = 1_000_000,
+        });
+
+        openAiResult.CostAmount.Should().Be(1m, "OpenAI prices the shared model at 1/1M input.");
+        anthropicResult.CostAmount.Should().Be(2m, "Anthropic prices the same model name at 2/1M input.");
+    }
+
+    [Fact]
     public async Task Running_spend_reconstructible_by_summing_audit_rows()
     {
         BudgetStore.SetBudget("reconstruct@example.com",
             EffectiveBudget.FromUserOverride(Usd(100m)));
-        Store.SetPricing("gpt-4o",
+        Store.SetPricing(
             ModelPricing.Create(Provider.OpenAI, "gpt-4o",
                 TokenPrices.Create(2.5m, 10m)));
 
@@ -354,7 +388,7 @@ public class UserBudgetGrainTests : GrainTestBase
     {
         BudgetStore.SetBudget("accumulate@example.com",
             EffectiveBudget.FromUserOverride(Usd(100m)));
-        Store.SetPricing("gpt-4o",
+        Store.SetPricing(
             ModelPricing.Create(Provider.OpenAI, "gpt-4o",
                 TokenPrices.Create(2.5m, 10m)));
 
@@ -407,11 +441,14 @@ public class UserBudgetGrainTests : GrainTestBase
         storage.State.Returns(state);
         storage.WriteStateAsync().Returns(x => Task.FromException(new InvalidOperationException("DB error")));
 
+        var providerInference = new ProviderInferenceMap(new Dictionary<string, string> { ["gpt"] = "openai" });
+
         var grain = new UserBudgetGrain(
             budgetStore,
             usageEventStore,
             options,
             timeProvider,
+            providerInference,
             storage);
 
         // Inject the mocked grain context and grain runtime via reflection so DeactivateOnIdle() doesn't throw NullReferenceException
@@ -431,7 +468,7 @@ public class UserBudgetGrainTests : GrainTestBase
         });
 
         var grainFactory = NSubstitute.Substitute.For<IGrainFactory>();
-        grainFactory.GetGrain<IPricingGrain>("gpt-4", Arg.Any<string?>()).Returns(pricingGrain);
+        grainFactory.GetGrain<IPricingGrain>(ProviderResolver.Key(Provider.OpenAI, "gpt-4"), Arg.Any<string?>()).Returns(pricingGrain);
 
         var serviceProvider = NSubstitute.Substitute.For<IServiceProvider>();
         serviceProvider.GetService(typeof(IGrainFactory)).Returns(grainFactory);
@@ -476,11 +513,13 @@ public class UserBudgetGrainTests : GrainTestBase
         var timeProvider = System.TimeProvider.System;
         
         var options = new BudgetGrainOptions();
+        var providerInference = new ProviderInferenceMap(new Dictionary<string, string> { ["gpt"] = "openai" });
         var grain = new UserBudgetGrain(
             budgetStore,
             usageEventStore,
             options,
             timeProvider,
+            providerInference,
             storage);
 
         var grainType = typeof(Grain);
@@ -510,15 +549,16 @@ public class UserBudgetGrainTests : GrainTestBase
     {
         BudgetStore.SetBudget("mismatch-budget@example.com",
             EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
-        Store.SetPricing("model-eur",
+        Store.SetPricing(
             ModelPricing.Create(Provider.OpenAI, "model-eur",
                 TokenPrices.Create(2.5m, 10m), "EUR"));
 
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("mismatch-budget@example.com");
-        
+
         Func<Task> act = () => grain.CaptureUsageAsync(new UsageCaptureRequest
         {
             Model = "model-eur",
+            Provider = "openai",
             TokensInput = 1000,
             TokensOutput = 500,
         });
@@ -532,10 +572,10 @@ public class UserBudgetGrainTests : GrainTestBase
     {
         BudgetStore.SetBudget("mismatch-spend@example.com", EffectiveBudget.None());
         
-        Store.SetPricing("model-eur-2",
+        Store.SetPricing(
             ModelPricing.Create(Provider.OpenAI, "model-eur-2",
                 TokenPrices.Create(2.5m, 10m), "EUR"));
-        Store.SetPricing("model-usd-2",
+        Store.SetPricing(
             ModelPricing.Create(Provider.OpenAI, "model-usd-2",
                 TokenPrices.Create(2.5m, 10m), "USD"));
 
@@ -545,6 +585,7 @@ public class UserBudgetGrainTests : GrainTestBase
         await grain.CaptureUsageAsync(new UsageCaptureRequest
         {
             Model = "model-eur-2",
+            Provider = "openai",
             TokensInput = 1000,
             TokensOutput = 500,
             RequestId = "req-eur"
@@ -554,6 +595,7 @@ public class UserBudgetGrainTests : GrainTestBase
         Func<Task> act = () => grain.CaptureUsageAsync(new UsageCaptureRequest
         {
             Model = "model-usd-2",
+            Provider = "openai",
             TokensInput = 1000,
             TokensOutput = 500,
             RequestId = "req-usd"
@@ -569,7 +611,7 @@ public class UserBudgetGrainTests : GrainTestBase
         // 1. Start with no budget
         BudgetStore.SetBudget("mismatch-check@example.com", EffectiveBudget.None());
         
-        Store.SetPricing("model-eur-3",
+        Store.SetPricing(
             ModelPricing.Create(Provider.OpenAI, "model-eur-3",
                 TokenPrices.Create(2.5m, 10m), "EUR"));
 
@@ -579,6 +621,7 @@ public class UserBudgetGrainTests : GrainTestBase
         await grain.CaptureUsageAsync(new UsageCaptureRequest
         {
             Model = "model-eur-3",
+            Provider = "openai",
             TokensInput = 1000,
             TokensOutput = 500,
             RequestId = "req-check-eur"

@@ -45,6 +45,7 @@ served a given request beyond the model name reported by the gateway.
 | **Gateway** | The external LLM gateway that calls this tracker. Its identity is unknown to us. |
 | **Caller id** | The identity of the end user/consumer of the LLM call, typically an email. This is the budget subject. |
 | **Model** | A provider model name as reported by the gateway (e.g. `gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro`). |
+| **Provider** | The LLM provider that served the call (`openai` \| `anthropic` \| `google`). Pricing is keyed by **(provider, model)**, so the same model name may exist under more than one provider. The provider may be supplied on the call, or inferred from the model name (see §6.2.3). |
 | **Adapter** | A per-provider component that knows how to fetch current pricing for that provider's models. |
 | **Effective budget** | The budget that applies to a caller id after resolving groups + user override. |
 | **Running spend** | The accumulated cost for a caller id within the current budget period. |
@@ -117,7 +118,8 @@ Authorization: Bearer <gateway token>
 
 {
   "callerId": "alice@example.com",     // budget subject (typically email)
-  "model": "gpt-4o"                    // optional, for early model gating
+  "model": "gpt-4o",                   // optional, for early model gating
+  "provider": "openai"                 // optional; inferred from model when omitted (see §6.2.3)
 }
 ```
 
@@ -151,6 +153,7 @@ Authorization: Bearer <gateway token>
 {
   "callerId": "alice@example.com",
   "model": "gpt-4o",
+  "provider": "openai",       // optional; inferred from model when omitted (see §6.2.3)
   "tokens": {
     "input": 1234,            // non-cached input tokens
     "output": 567,            // generated tokens
@@ -177,9 +180,30 @@ Response:
   total cost, and accrues it against the caller's running spend.
 - `requestId`, when present, is used for **idempotency**: a duplicate capture
   with the same `requestId` must not double-accrue.
-- If the model is unknown / not in the allowed pricing set, capture is rejected
-  with a distinct error (the gateway should not be silently accruing at zero
-  cost).
+- Pricing is resolved by **(provider, model)** (§8.1). The provider is determined
+  per §6.2.3.
+- If the **(provider, model)** pair is unknown / not in the allowed pricing set —
+  or the provider cannot be determined at all — capture is rejected with a
+  distinct error (the gateway should not be silently accruing at zero cost).
+
+#### 6.2.3 Provider resolution
+
+The gateway may report the same model name under different providers, so pricing
+is keyed by **(provider, model)**, not by model alone (§8.1, §8.5). The provider
+for a call is resolved in this order:
+
+1. **Explicit:** if the call supplies a recognised `provider`
+   (`openai` | `anthropic` | `google`), it is used as-is.
+2. **Inferred:** otherwise (provider omitted, empty, or unrecognised) the tracker
+   infers it from the model name using a **prefix → provider** map. The map is
+   **configuration-driven** — it is read from the `Pricing:ProviderInference`
+   section of `appsettings.json` (a checked-in file, env-overridable per §10.3);
+   it is **not** hard-coded. The shipped defaults are: `claude*` → `anthropic`,
+   `gpt*` / `chatgpt*` / `o1*` / `o3*` / `o4*` → `openai`, `gemini*` → `google`.
+   The longest matching prefix wins.
+3. **Unresolved:** if neither an explicit recognised provider nor a prefix match
+   is available, the call is treated as **unknown model** and rejected on capture
+   (fail-closed — never priced at zero).
 
 ## 7. Budget model
 
@@ -222,6 +246,11 @@ consistent unit across providers; currency normalized where feasible):
 Each model entry also records: provider, model name (as the gateway reports it),
 the timestamp the pricing was fetched, and a version/etag if the source provides
 one.
+
+Pricing is **keyed by (provider, model)**: model names need only be unique
+**within** a provider, and the same model name may be priced differently under
+different providers. The capture path resolves the provider (§6.2.3) and looks up
+the unit prices for that exact (provider, model) pair.
 
 ### 8.2 Adapters
 
@@ -310,9 +339,10 @@ format may be JSON or YAML):
 
 Required fields per model entry:
 
-- `provider` — one of `openai` | `anthropic` | `google` (extensible).
-- `model` — the model name **as the gateway reports it** (this is the join key
-  used by the capture path).
+- `provider` — one of `openai` | `anthropic` | `google` (extensible). Together
+  with `model` it forms the **(provider, model) join key** used by the capture
+  path; model names must be unique **within** a provider (not globally).
+- `model` — the model name **as the gateway reports it**.
 - `fetchedAt` — ISO-8601 timestamp of when these prices were obtained.
 - `prices.input`, `prices.output` — mandatory, non-null.
 - `prices.cacheRead` — mandatory; `null` only if the model genuinely has no
@@ -331,19 +361,24 @@ be conflated:
 1. **`UserBudgetGrain`** — keyed by caller id. Tracks that caller's running spend
    for the current period, resolves the effective budget, and answers
    check/capture calls. Described in §9.1.
-2. **`PricingGrain`** — keyed by model name. Holds that model's current unit
-   prices (`input`, `output`, `cacheRead`, `cacheWrite`) in-silo so the capture
-   path can compute cost without a DB round-trip on every call.
+2. **`PricingGrain`** — keyed by the composite **`"{provider}:{model}"`** key.
+   Holds that (provider, model)'s current unit prices (`input`, `output`,
+   `cacheRead`, `cacheWrite`) in-silo so the capture path can compute cost without
+   a DB round-trip on every call.
 
-When a capture arrives, the `UserBudgetGrain` for the caller looks up the
-relevant `PricingGrain` (by model name), multiplies the reported token counts by
-the grain's current unit prices, sums to a total cost, and accrues it. The
-`PricingGrain` is read-only on the hot path.
+When a capture arrives, the `UserBudgetGrain` for the caller resolves the provider
+(§6.2.3), looks up the relevant `PricingGrain` by the **(provider, model)**
+composite key, multiplies the reported token counts by the grain's current unit
+prices, sums to a total cost, and accrues it. The `PricingGrain` is read-only on
+the hot path.
 
 **Update mechanism (resolved Q4 — Orleans streams, push):** When the background
 refresh job (§8.4) writes new prices to PostgreSQL, it publishes a
-`pricing-updated` event (carrying the affected model names, or a full snapshot)
-onto an **Orleans stream** (`StreamNamespace = "pricing"`). `PricingGrain`
+`pricing-updated` event (carrying the affected **provider** and its model names,
+or a full snapshot) onto an **Orleans stream** (`StreamNamespace = "pricing"`).
+Because the event carries the provider, the subscriber invalidates the correct
+per-(provider, model) cache entries (the composite key) without any change to the
+publisher. `PricingGrain`
 instances subscribe to this stream and refresh their in-memory value on push,
 giving near-immediate freshness after a live fetch, or within the 30-second cache TTL after an Admin App manual upload,
 with no polling tax on the DB.
@@ -746,3 +781,4 @@ To be specified in a follow-up section of this document:
 | Q3 | Pricing source strategy | **Resolved** — hybrid (live fetch + persisted fallback + staleness) plus manual pricing file upload via the Admin App. |
 | Q4 | Pricing grain refresh mechanism | **Resolved** — Orleans streams (push); `PricingGrain` is a `[StatelessWorker]` local grain with multiple activations per silo. See §8.6. |
 | Q5 | Grain-side invalidation of budget/group data after admin writes | **Resolved** — 30 s TTL; each `UserBudgetGrain` re-reads the effective budget from the DB at most every 30 s. Configurable via `BudgetCacheTtlSeconds` (default `30`). See §12.4. |
+| Q6 | Per-provider pricing & provider resolution | **Resolved** — pricing keyed by **(provider, model)**; `PricingGrain` keyed by `"{provider}:{model}"`. Provider is taken from the call when supplied, else inferred from the model name via a **config-file** prefix map (`Pricing:ProviderInference`), else the call is unknown-model rejected. See §6.2.3, §8.1, §8.5, §8.6. |

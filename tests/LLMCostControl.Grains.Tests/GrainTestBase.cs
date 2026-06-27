@@ -138,6 +138,17 @@ public sealed class TestSiloConfigurator : ISiloConfigurator
             services.AddSingleton<IUsageEventStore>(SharedUsageEventStore.Instance);
             services.AddSingleton(SharedBudgetOptions.Instance);
             services.AddSingleton<TimeProvider>(SharedTimeProvider.Instance);
+
+            // Provider-inference map (prefix -> provider) for the capture path (§6.2.3).
+            services.AddSingleton(new ProviderInferenceMap(new Dictionary<string, string>
+            {
+                ["claude"] = "anthropic",
+                ["gpt"] = "openai",
+                ["chatgpt"] = "openai",
+                ["o1"] = "openai",
+                ["o3"] = "openai",
+                ["gemini"] = "google",
+            }));
         });
     }
 }

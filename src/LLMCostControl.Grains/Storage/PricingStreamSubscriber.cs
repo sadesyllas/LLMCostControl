@@ -1,3 +1,4 @@
+using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions.StreamEvents;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -56,10 +57,12 @@ public sealed class PricingStreamSubscriber : IHostedService
 
                     _subscription = await stream.SubscribeAsync((evt, token) =>
                     {
-                        _logger.LogInformation("Received pricing update stream event for {Count} models.", evt.UpdatedModels.Count);
+                        _logger.LogInformation("Received pricing update stream event for {Count} models ({Provider}).", evt.UpdatedModels.Count, evt.Provider);
                         foreach (var model in evt.UpdatedModels)
                         {
-                            _cache.Remove(model);
+                            // The event carries the provider, so invalidate the exact
+                            // per-(provider, model) composite cache key (§8.6).
+                            _cache.Remove(ProviderResolver.Key(evt.Provider, model));
                         }
                         return Task.CompletedTask;
                     });

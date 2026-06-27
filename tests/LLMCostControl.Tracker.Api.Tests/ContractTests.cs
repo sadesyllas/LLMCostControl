@@ -41,7 +41,7 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
 
     private void SeedPricing(string model, decimal input, decimal output, decimal? cacheRead = null)
     {
-        _factory.PricingStore.SetPricing(model,
+        _factory.PricingStore.SetPricing(
             ModelPricing.Create(Provider.OpenAI, model,
                 TokenPrices.Create(input, output, cacheRead)));
     }

@@ -21,12 +21,12 @@ public sealed class PricingStore : IPricingStore
     }
 
     /// <summary>
-    /// Returns the current pricing for the given model name, or null.
+    /// Returns the current pricing for the given (provider, model) pair, or null.
     /// </summary>
-    public async Task<ModelPricing?> GetByModelAsync(string model, CancellationToken ct = default)
+    public async Task<ModelPricing?> GetAsync(Provider provider, string model, CancellationToken ct = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(ct);
         var repo = new ModelPricingRepository(context);
-        return await repo.GetByModelAsync(model, ct);
+        return await repo.GetByProviderAndModelAsync(provider, model, ct);
     }
 }

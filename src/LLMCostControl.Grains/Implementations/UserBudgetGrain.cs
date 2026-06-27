@@ -40,6 +40,7 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
     private readonly IUsageEventStore _usageEventStore;
     private readonly BudgetGrainOptions _options;
     private readonly TimeProvider _timeProvider;
+    private readonly ProviderInferenceMap _providerInference;
 
     /// <summary>Persistent grain state, backed by the "Default" Orleans storage provider.</summary>
     private readonly IPersistentState<UserBudgetGrainState> _storage;
@@ -63,12 +64,14 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
         IUsageEventStore usageEventStore,
         BudgetGrainOptions options,
         TimeProvider timeProvider,
+        ProviderInferenceMap providerInference,
         [PersistentState("budget", "Default")] IPersistentState<UserBudgetGrainState> storage)
     {
         _budgetStore = budgetStore;
         _usageEventStore = usageEventStore;
         _options = options;
         _timeProvider = timeProvider;
+        _providerInference = providerInference;
         _storage = storage;
     }
 
@@ -116,8 +119,15 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             }
         }
 
-        // Look up pricing for the model.
-        var pricingGrain = GrainFactory.GetGrain<IPricingGrain>(request.Model);
+        // Resolve the provider (explicit on the request, else inferred from the
+        // model name via the config-driven map, §6.2.3) and look up pricing for
+        // the (provider, model) pair via its composite-keyed PricingGrain (§8.6).
+        if (!_providerInference.TryResolve(request.Provider, request.Model, out var provider))
+        {
+            throw new UnknownModelException(request.Model);
+        }
+
+        var pricingGrain = GrainFactory.GetGrain<IPricingGrain>(ProviderResolver.Key(provider, request.Model));
         var pricing = await pricingGrain.GetPricingAsync();
 
         if (pricing is null)

@@ -19,6 +19,13 @@ public class ModelPricingRepository
     public Task<ModelPricing?> GetByModelAsync(string model, CancellationToken ct = default)
         => _db.ModelPricing.FirstOrDefaultAsync(p => p.Model == model, ct);
 
+    /// <summary>
+    /// Gets pricing for a single (provider, model) pair, or null. This is the
+    /// capture-path join key (§8.5): model names are unique only within a provider.
+    /// </summary>
+    public Task<ModelPricing?> GetByProviderAndModelAsync(Provider provider, string model, CancellationToken ct = default)
+        => _db.ModelPricing.FirstOrDefaultAsync(p => p.Provider == provider && p.Model == model, ct);
+
     /// <summary>Returns all current pricing entries.</summary>
     public Task<List<ModelPricing>> GetAllAsync(CancellationToken ct = default)
         => _db.ModelPricing.ToListAsync(ct);

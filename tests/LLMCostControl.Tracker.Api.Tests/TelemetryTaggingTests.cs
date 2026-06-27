@@ -182,7 +182,7 @@ public sealed class TelemetryTaggingTests : IClassFixture<TelemetryWebAppFactory
             _factory.BudgetStore.SetBudget(callerId, EffectiveBudget.None());
         }
 
-        _factory.PricingStore.SetPricing("gpt-4o", ModelPricing.Create(Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m)));
+        _factory.PricingStore.SetPricing(ModelPricing.Create(Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m)));
 
         // Set up Activity and Meter listeners
         var activities = new List<System.Diagnostics.Activity>();

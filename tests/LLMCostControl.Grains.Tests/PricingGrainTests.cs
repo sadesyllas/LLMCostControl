@@ -16,9 +16,9 @@ public class PricingGrainTests : GrainTestBase
     [Fact]
     public async Task Grain_loads_pricing_from_store_on_first_access()
     {
-        Store.SetPricing("gpt-4o", MakePricing("gpt-4o", 2.5m, 10m, 1.25m));
+        Store.SetPricing(MakePricing("gpt-4o", 2.5m, 10m, 1.25m));
 
-        var grain = GrainFactory.GetGrain<IPricingGrain>("gpt-4o");
+        var grain = GrainFactory.GetGrain<IPricingGrain>(ProviderResolver.Key(Provider.OpenAI, "gpt-4o"));
 
         var result = await grain.GetPricingAsync();
 
@@ -33,7 +33,7 @@ public class PricingGrainTests : GrainTestBase
     [Fact]
     public async Task Grain_returns_null_for_unknown_model()
     {
-        var grain = GrainFactory.GetGrain<IPricingGrain>("totally-unknown-model");
+        var grain = GrainFactory.GetGrain<IPricingGrain>(ProviderResolver.Key(Provider.OpenAI, "totally-unknown-model"));
 
         var result = await grain.GetPricingAsync();
 
@@ -43,8 +43,8 @@ public class PricingGrainTests : GrainTestBase
     [Fact]
     public async Task Cached_pricing_is_returned_without_reloading_from_store()
     {
-        Store.SetPricing("cache-test", MakePricing("cache-test", 2.5m, 10m));
-        var grain = GrainFactory.GetGrain<IPricingGrain>("cache-test");
+        Store.SetPricing(MakePricing("cache-test", 2.5m, 10m));
+        var grain = GrainFactory.GetGrain<IPricingGrain>(ProviderResolver.Key(Provider.OpenAI, "cache-test"));
 
         await grain.GetPricingAsync();
         var callsAfterFirst = Store.CallCount;
@@ -59,9 +59,9 @@ public class PricingGrainTests : GrainTestBase
     [Fact]
     public async Task StatelessWorker_provides_local_activations_with_multiple_instances()
     {
-        Store.SetPricing("concurrent-test", MakePricing("concurrent-test", 2.5m, 10m));
+        Store.SetPricing(MakePricing("concurrent-test", 2.5m, 10m));
 
-        var grain = GrainFactory.GetGrain<IPricingGrain>("concurrent-test");
+        var grain = GrainFactory.GetGrain<IPricingGrain>(ProviderResolver.Key(Provider.OpenAI, "concurrent-test"));
 
         var firstResult = await grain.GetPricingAsync();
         firstResult.Should().NotBeNull();
@@ -86,9 +86,9 @@ public class PricingGrainTests : GrainTestBase
         var stalePricing = ModelPricing.Create(
             Provider.OpenAI, "stale-model", TokenPrices.Create(2.5m, 10m, 1.25m));
         stalePricing.StaleSince = DateTimeOffset.UtcNow;
-        Store.SetPricing("stale-model", stalePricing);
+        Store.SetPricing(stalePricing);
 
-        var grain = GrainFactory.GetGrain<IPricingGrain>("stale-model");
+        var grain = GrainFactory.GetGrain<IPricingGrain>(ProviderResolver.Key(Provider.OpenAI, "stale-model"));
 
         var result = await grain.GetPricingAsync();
 

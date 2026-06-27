@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions;
 using LLMCostControl.Grains.Implementations;
 using LLMCostControl.Grains.Options;
@@ -38,6 +39,13 @@ builder.Services.AddSingleton<IPricingCache, PricingCache>();
 builder.Services.Configure<BudgetGrainOptions>(builder.Configuration.GetSection("BudgetGrain"));
 builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BudgetGrainOptions>>().Value);
 builder.Services.AddSingleton(TimeProvider.System);
+
+// Provider-inference map (prefix -> provider) used to resolve the provider when a
+// call omits it (§6.2.3). Filled from the Pricing:ProviderInference config section
+// (appsettings.json), not hard-coded.
+builder.Services.AddSingleton(_ => new ProviderInferenceMap(
+    builder.Configuration.GetSection("Pricing:ProviderInference").Get<Dictionary<string, string>>()
+        ?? new Dictionary<string, string>()));
 
 // Gateway authentication (§6.1): JWT bearer with configurable JWKS, issuer, audience.
 builder.Services.Configure<GatewayAuthOptions>(builder.Configuration.GetSection("GatewayAuth"));
@@ -184,6 +192,7 @@ app.MapPost("/api/usage/capture", async (
         var result = await grain.CaptureUsageAsync(new UsageCaptureRequest
         {
             Model = request.Model,
+            Provider = request.Provider,
             TokensInput = request.Tokens.Input,
             TokensOutput = request.Tokens.Output,
             TokensCacheRead = request.Tokens.CacheRead,

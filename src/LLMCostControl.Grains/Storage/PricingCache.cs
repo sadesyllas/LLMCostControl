@@ -1,28 +1,31 @@
+using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions;
 
 namespace LLMCostControl.Grains.Storage;
 
 /// <summary>
-/// A thread-safe, per-silo in-memory cache of model pricing. Shared by all
+/// A thread-safe, per-silo in-memory cache of model pricing, keyed by the
+/// composite <c>"{provider}:{model}"</c> key (§8.6). Shared by all
 /// <c>[StatelessWorker]</c> <c>PricingGrain</c> activations on the same silo,
-/// so only one DB read per model per TTL window is needed.
+/// so only one DB read per (provider, model) per TTL window is needed.
 /// </summary>
 public interface IPricingCache
 {
     /// <summary>
-    /// Returns the cached pricing for a model, or null when not cached / expired.
-    /// Does NOT load from the store — caller should check and call
+    /// Returns the cached pricing for a composite key, or null when not cached /
+    /// expired. Does NOT load from the store — caller should check and call
     /// <see cref="RefreshAsync"/> when null.
     /// </summary>
-    PricingResult? Get(string model);
+    PricingResult? Get(string key);
 
     /// <summary>
-    /// Loads (or reloads) the pricing for a model from the store and caches it.
+    /// Loads (or reloads) the pricing for the given (provider, model) from the
+    /// store and caches it under <paramref name="key"/>.
     /// </summary>
-    Task RefreshAsync(string model, IPricingStore store, CancellationToken ct = default);
+    Task RefreshAsync(string key, Provider provider, string model, IPricingStore store, CancellationToken ct = default);
 
-    /// <summary>Removes a model from the cache.</summary>
-    void Remove(string model);
+    /// <summary>Removes a composite key from the cache.</summary>
+    void Remove(string key);
 }
 
 /// <summary>
@@ -46,18 +49,18 @@ public sealed class PricingCache : IPricingCache
     /// <summary>
     /// Returns the cached pricing if present and not expired, otherwise null.
     /// </summary>
-    public PricingResult? Get(string model)
+    public PricingResult? Get(string key)
     {
         lock (_lock)
         {
-            if (!_entries.TryGetValue(model, out var entry))
+            if (!_entries.TryGetValue(key, out var entry))
             {
                 return null;
             }
 
             if (DateTimeOffset.UtcNow - entry.LoadedAt > _ttl)
             {
-                _entries.Remove(model);
+                _entries.Remove(key);
                 return null;
             }
 
@@ -66,11 +69,12 @@ public sealed class PricingCache : IPricingCache
     }
 
     /// <summary>
-    /// Loads pricing from the store and caches it with the current timestamp.
+    /// Loads pricing for the (provider, model) from the store and caches it under
+    /// <paramref name="key"/> with the current timestamp.
     /// </summary>
-    public async Task RefreshAsync(string model, IPricingStore store, CancellationToken ct = default)
+    public async Task RefreshAsync(string key, Provider provider, string model, IPricingStore store, CancellationToken ct = default)
     {
-        var pricing = await store.GetByModelAsync(model, ct);
+        var pricing = await store.GetAsync(provider, model, ct);
 
         var result = pricing is null ? null : new PricingResult
         {
@@ -86,21 +90,21 @@ public sealed class PricingCache : IPricingCache
         {
             if (result is null)
             {
-                _entries.Remove(model);
+                _entries.Remove(key);
             }
             else
             {
-                _entries[model] = (result, DateTimeOffset.UtcNow);
+                _entries[key] = (result, DateTimeOffset.UtcNow);
             }
         }
     }
 
-    /// <summary>Removes a model from the cache.</summary>
-    public void Remove(string model)
+    /// <summary>Removes a composite key from the cache.</summary>
+    public void Remove(string key)
     {
         lock (_lock)
         {
-            _entries.Remove(model);
+            _entries.Remove(key);
         }
     }
 }
