@@ -24,7 +24,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M11 | Cost accrual + usage audit trail | §6.2.2 (cost), §9.4 | M9, M10 | [x] | [x] |
 | M12 | Auth: OAuth/JWKS validation | §6.1 | M0 | [x] | [x] |
 | M13 | Tracker API: check + capture endpoints | §6.2.1, §6.2.2 | M11, M12 | [x] | [x] |
-| M14 | Localhost pricing file import endpoint | §8.3 | M5, M7 | [x] | [x] |
+| M14 | Manual pricing file upload (Admin App, §8.3) — *superseded the localhost import endpoint* | §8.3 | M5, M18 | [x] | [x] |
 | M15 | Effective-group telemetry tagging | §10.2 | M10, M11, M2 | [x] | [x] |
 | M16 | Blazor admin app: scaffolding + EntraID auth | §12.1, §12.2 | M4 | [x] | [x] |
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | §12.3 | M16, M4 | [x] | [x] |
@@ -266,21 +266,29 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
     on duplicate `requestId`, `AllowNonBudgetedUsers` toggling on the check
     path).
 
-## M14 — Localhost pricing file import endpoint
+## M14 — Manual pricing file upload (Admin App only)
 
-- **Spec ref:** §8.3
-- **Depends on:** M5, M7
+> **Superseded by an owner-authorized §8.3 change.** The original M14 deliverable
+> was a `localhost`-bound import endpoint. Per the repo owner's decision, that
+> endpoint was **removed** and manual pricing upload is delivered exclusively
+> through the Entra ID-protected Admin App (§8.3, §12.3), so there is a single,
+> authenticated upload surface. `SPEC.md` §8.3 was updated accordingly. The upload
+> UI and its tests live in **M18**.
+
+- **Spec ref:** §8.3 (rewritten)
+- **Depends on:** M5, M18
 - **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
-  - `localhost`-bound endpoint accepts a pricing file upload and feeds it through
-    the same pipeline as a live fetch (shared validator from M5, persistence via
-    the refresh job's write path from M7).
-  - Atomic reject on invalid file (no partial import); imported values become
-    visible to `PricingGrain` via the `pricing-updated` stream.
+  - Manual pricing upload is exposed **only** in the Admin App, gated by Entra ID
+    and the `CostTracker.Admin` role; there is no externally reachable import
+    endpoint.
+  - Uploads reuse the shared canonical-file validator (M5) and the shared
+    repository write path; an invalid file is rejected atomically (no partial
+    import). Imported values become visible to `PricingGrain` within the 30 s
+    cache TTL.
 - **Tests:**
-  - Valid file → rows persisted + stream event published + grains updated;
-    invalid file → 4xx, zero rows written; endpoint **not** reachable from a
-    non-localhost address.
+  - Covered by M18 (Admin App pricing-upload tests against real Postgres): valid
+    file → rows persisted; invalid file → rejected with zero rows written.
 
 ## M15 — Effective-group telemetry tagging
 
