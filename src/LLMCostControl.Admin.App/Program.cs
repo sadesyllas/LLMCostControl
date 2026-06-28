@@ -61,3 +61,9 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+/// <summary>
+/// Exposed so integration tests can host the admin app via
+/// <c>WebApplicationFactory&lt;Program&gt;</c> (§13.3).
+/// </summary>
+public partial class Program;
