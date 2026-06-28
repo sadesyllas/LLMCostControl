@@ -345,6 +345,26 @@ public class UserBudgetGrainTests : GrainTestBase
     }
 
     [Fact]
+    public async Task Check_denies_when_group_budget_is_zero_even_if_unbudgeted_users_are_allowed()
+    {
+        // Setting a group's budget to 0 is the intended quick "cut-off" lever. A
+        // zero budget is an explicit "spend nothing" budget (remaining 0, denied
+        // per §7), distinct from having NO budget — so it must cut the group off
+        // even when AllowNonBudgetedUsers is enabled.
+        BudgetOptions.AllowNonBudgetedUsers = true;
+
+        var groupId = Guid.NewGuid();
+        BudgetStore.SetBudget("cutoff@example.com", EffectiveBudget.FromGroup(Usd(0m), groupId));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("cutoff@example.com");
+        var result = await grain.CheckBudgetAsync();
+
+        result.Allowed.Should().BeFalse("a zero budget cuts the group off regardless of AllowNonBudgetedUsers (§7).");
+        result.RemainingAmount.Should().Be(0m);
+        result.EffectiveBudgetAmount.Should().Be(0m, "a zero budget is a real budget, not 'no budget'.");
+    }
+
+    [Fact]
     public async Task Running_spend_reconstructible_by_summing_audit_rows()
     {
         BudgetStore.SetBudget("reconstruct@example.com",

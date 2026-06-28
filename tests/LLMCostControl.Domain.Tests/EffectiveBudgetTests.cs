@@ -69,8 +69,11 @@ public class EffectiveBudgetTests
     }
 
     [Fact]
-    public void HasBudget_false_when_group_budget_is_zero()
+    public void HasBudget_true_when_group_budget_is_zero_so_zero_is_a_real_budget()
     {
+        // A zero budget is an explicit "spend nothing" budget (a cut-off), NOT the
+        // same as having no budget — so HasBudget is true and the check denies
+        // (remaining 0) regardless of AllowNonBudgetedUsers (§7).
         var period = new BudgetPeriod(2026, 6);
         var groupId = Guid.NewGuid();
         var groupBudgets = new[]
@@ -80,6 +83,8 @@ public class EffectiveBudgetTests
 
         var result = EffectiveBudget.Resolve(null, groupBudgets);
 
-        result.HasBudget.Should().BeFalse();
+        result.HasBudget.Should().BeTrue();
+        result.Amount!.IsZero.Should().BeTrue();
+        result.Source.Should().Be(BudgetSource.Group);
     }
 }

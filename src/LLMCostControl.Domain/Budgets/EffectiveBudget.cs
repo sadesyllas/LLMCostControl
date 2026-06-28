@@ -18,8 +18,15 @@ public record EffectiveBudget
     /// <summary>The group id whose budget was in effect, or null for override/none.</summary>
     public Guid? GroupId { get; init; }
 
-    /// <summary>True when there is a non-zero budget amount.</summary>
-    public bool HasBudget => Amount is not null && !Amount.IsZero;
+    /// <summary>
+    /// True when the caller has an explicit budget — <b>including an explicit zero</b>.
+    /// A zero budget is a real, intentional "spend nothing" budget (it denies on
+    /// check because remaining is 0) and must be distinguished from having
+    /// <em>no</em> budget at all (<see cref="None"/>), which is what the
+    /// <c>AllowNonBudgetedUsers</c> setting governs (§7). Setting a group budget
+    /// to 0 is therefore a reliable cut-off, regardless of that setting.
+    /// </summary>
+    public bool HasBudget => Amount is not null;
 
     /// <summary>Creates an <see cref="EffectiveBudget"/> from a per-user override.</summary>
     public static EffectiveBudget FromUserOverride(Money amount) => new()
