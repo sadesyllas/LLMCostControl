@@ -269,6 +269,12 @@ namespace LLMCostControl.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(7)")
                         .HasColumnName("period");
 
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("provider");
+
                     b.Property<decimal>("RunningSpendAfter")
                         .HasPrecision(18, 8)
                         .HasColumnType("numeric(18,8)")

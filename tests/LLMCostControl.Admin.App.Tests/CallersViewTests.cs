@@ -103,6 +103,7 @@ public sealed class CallersViewTests : TestContext, IDisposable
                 effectiveGroupId: bigGroup.Id,
                 budgetSource: BudgetSource.Group,
                 model: "gpt-4o",
+                provider: Provider.OpenAI,
                 tokensInput: 1000,
                 tokensOutput: 500,
                 tokensCacheRead: 0,

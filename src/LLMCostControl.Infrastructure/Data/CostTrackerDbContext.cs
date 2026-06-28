@@ -167,6 +167,7 @@ public class CostTrackerDbContext : DbContext
             e.Property(x => x.EffectiveGroupId).HasColumnName("effective_group_id");
             e.Property(x => x.BudgetSource).HasConversion<string>().IsRequired().HasMaxLength(20);
             e.Property(x => x.Model).IsRequired().HasMaxLength(100);
+            e.Property(x => x.Provider).HasConversion<string>().IsRequired().HasMaxLength(20).HasColumnName("provider");
             e.Property(x => x.TokensInput).HasColumnName("tokens_input");
             e.Property(x => x.TokensOutput).HasColumnName("tokens_output");
             e.Property(x => x.TokensCacheRead).HasColumnName("tokens_cache_read");

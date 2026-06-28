@@ -191,6 +191,7 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             budget.GroupId,
             budget.Source,
             request.Model,
+            provider,
             request.TokensInput,
             request.TokensOutput,
             request.TokensCacheRead,

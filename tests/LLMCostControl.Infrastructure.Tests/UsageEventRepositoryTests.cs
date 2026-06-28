@@ -57,6 +57,7 @@ public class UsageEventRepositoryTests : RepositoryTestBase
             effectiveGroupId: Guid.NewGuid(),
             budgetSource: BudgetSource.Group,
             model: "gpt-4o",
+            provider: Provider.OpenAI,
             tokensInput: 1000,
             tokensOutput: 500,
             tokensCacheRead: 200,

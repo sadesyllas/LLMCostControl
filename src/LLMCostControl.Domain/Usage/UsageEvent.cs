@@ -33,6 +33,13 @@ public class UsageEvent
     /// <summary>The model name reported by the gateway.</summary>
     public string Model { get; init; } = string.Empty;
 
+    /// <summary>
+    /// The provider that priced the call, resolved per §6.2.3. Recorded so the
+    /// append-only ledger is self-describing when a model name is shared across
+    /// providers (§8.5).
+    /// </summary>
+    public Provider Provider { get; init; }
+
     /// <summary>Non-cached input token count.</summary>
     public long TokensInput { get; init; }
 
@@ -73,6 +80,7 @@ public class UsageEvent
         Guid? effectiveGroupId,
         BudgetSource budgetSource,
         string model,
+        Provider provider,
         long tokensInput,
         long tokensOutput,
         long tokensCacheRead,
@@ -111,6 +119,7 @@ public class UsageEvent
             EffectiveGroupId = effectiveGroupId,
             BudgetSource = budgetSource,
             Model = model.Trim(),
+            Provider = provider,
             TokensInput = tokensInput,
             TokensOutput = tokensOutput,
             TokensCacheRead = tokensCacheRead,

@@ -22,6 +22,7 @@ public class UsageEventTests
             effectiveGroupId: groupId,
             budgetSource: BudgetSource.Group,
             model: "gpt-4o",
+            provider: Provider.OpenAI,
             tokensInput: 1000,
             tokensOutput: 500,
             tokensCacheRead: 200,
@@ -38,6 +39,7 @@ public class UsageEventTests
         evt.EffectiveGroupId.Should().Be(groupId);
         evt.BudgetSource.Should().Be(BudgetSource.Group);
         evt.Model.Should().Be("gpt-4o");
+        evt.Provider.Should().Be(Provider.OpenAI);
         evt.TokensInput.Should().Be(1000);
         evt.TokensOutput.Should().Be(500);
         evt.TokensCacheRead.Should().Be(200);
@@ -59,6 +61,7 @@ public class UsageEventTests
             effectiveGroupId: null,
             budgetSource: BudgetSource.None,
             model: "gpt-4o",
+            provider: Provider.OpenAI,
             tokensInput: 0, tokensOutput: 0, tokensCacheRead: 0, tokensCacheWrite: 0,
             unitPrices: TokenPrices.Create(1m, 1m),
             costAmount: 0m, costCurrency: "USD", runningSpendAfter: 0m,
@@ -76,6 +79,7 @@ public class UsageEventTests
             effectiveGroupId: null,
             budgetSource: BudgetSource.None,
             model: "gpt-4o",
+            provider: Provider.OpenAI,
             tokensInput: -1, tokensOutput: 0, tokensCacheRead: 0, tokensCacheWrite: 0,
             unitPrices: TokenPrices.Create(1m, 1m),
             costAmount: 0m, costCurrency: "USD", runningSpendAfter: 0m,

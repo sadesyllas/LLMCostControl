@@ -446,6 +446,8 @@ PostgreSQL is the single source of truth for:
     changes later.
   - `budget_source` — enum: `Group` | `UserOverride` | `None`.
   - `model` — the model name reported by the gateway.
+  - `provider` — the provider that priced the call (resolved per §6.2.3), so the
+    row is unambiguous when a model name is shared across providers (§8.5).
   - `tokens_input`, `tokens_output`, `tokens_cache_read`, `tokens_cache_write`.
   - `unit_prices` — snapshot of the input/output/cacheRead/cacheWrite unit prices
     used to compute the cost (so a future pricing change never rewrites history).
