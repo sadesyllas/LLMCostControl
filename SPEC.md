@@ -135,8 +135,8 @@ Response:
 }
 ```
 
-- Returns `allowed: false` when remaining budget ≤ 0 (or below a configurable
-  threshold).
+- Returns `allowed: false` when remaining budget ≤ 0 (e.g. an explicit budget of
+  `0`, see §7), or below a configurable threshold.
 - The tracker does **not** reserve/hold any amount at check time in iteration 1
   (no pending holds). Concurrency note: a caller may overspend between check and
   capture if many requests are in flight; accepted for iteration 1.
@@ -224,6 +224,14 @@ for a call is resolved in this order:
       `AllowNonBudgetedUsers` (default `false`); when set to `true`, unbudgeted
       callers are allowed through the check (their spend is still recorded for
       audit, but the check never gates them).
+- A budget amount of **zero is a valid, explicit budget** — a deliberate "spend
+  nothing" / cut-off — and is **distinct from having *no* budget**. A caller whose
+  effective budget is `0` is **always denied** (remaining ≤ 0), *regardless of*
+  `AllowNonBudgetedUsers`; that setting governs **only** callers with no budget at
+  all (resolution case 3 above). Setting a group's budget to `0` is therefore a
+  supported way to immediately cut the group off (visible within the budget cache
+  TTL, §12.4). A **negative** budget amount is invalid and rejected at the admin
+  surface (§12.3).
 - Running spend is tracked per caller id and resets with the period.
 - Membership and budget administration (how a person is added to a group, how a
   group's budget is set, how a per-user override is set) is **out of scope** for
@@ -615,7 +623,8 @@ Admin user ──►  Blazor Admin App  ──►  PostgreSQL
 
 - **Groups:** create / list / rename / delete a group.
 - **Group budgets:** set / update / clear the budget amount (and currency) for a
-  group, for the current budget period.
+  group, for the current budget period. A **negative** amount is rejected;
+  **zero** is allowed and acts as a cut-off (§7).
 - **Group membership:** add / remove a caller id (email) to/from a group.
 - **Per-user budget overrides:** set / update / clear an explicit budget for a
   specific caller id (the special-case override that wins over group budgets,
