@@ -30,6 +30,14 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | §12.3 | M16, M4 | [x] | [x] |
 | M18 | Admin app: read-only views + pricing file upload | §12.3 | M17, M5 | [x] | [x] |
 | M19 | Contract/conformance tests + E2E local-dev verification | §13.4, §14.3 | M13, M14, M15, M18 | [x] | [x] |
+| M20 | Coding standard: one top-level type per `.cs` file + guard | §17 | M19 | [ ] | [ ] |
+| M21 | Weekly budget period (multi-period budgeting) | §6.2.1, §6.2.2, §7, §9.4, §10.2 | M20 | [ ] | [ ] |
+| M22 | Additional providers (Azure AI Foundry, Vertex AI) | §6.2.3, §8.1, §8.2, §8.5 | M20 | [ ] | [ ] |
+| M23 | Pricing version history (insert-on-change) + usage references version | §8.7, §9.2, §9.4 | M20, M22 | [ ] | [ ] |
+
+> **Iteration 2 (M20–M23)** is owner-authorized scope added after M19. The
+> coding-standard refactor (M20) lands first so all subsequent code conforms;
+> M21–M23 then build on it in order.
 
 ---
 
@@ -373,3 +381,145 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 - **Tests:**
   - Contract suite green in CI; E2E checklist (manual, documented in the repo)
   signed off.
+
+---
+
+# Iteration 2 — owner-authorized scope additions
+
+## M20 — Coding standard: one top-level type per `.cs` file + guard
+
+- **Spec ref:** §17
+- **Depends on:** M19
+- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Rationale:** lands first so every subsequent milestone's code is authored
+  one-type-per-file and is checked by the guard from the outset.
+- **Acceptance criteria:**
+  - Every production `.cs` file under `src/` that currently declares more than one
+    top-level type (e.g. an interface co-located with its implementation, or two
+    enums) is **split** so each file declares exactly **one** top-level type; the
+    file name matches the type it declares (§17).
+  - An automated **architecture test** parses each production source file's syntax
+    tree (Roslyn / `Microsoft.CodeAnalysis.CSharp`) and asserts at most one
+    top-level type per file, honouring the §17 exemptions (`Program.cs` top-level
+    statements; generated EF `*.Designer.cs` / model snapshot; `obj/` `bin/`).
+    Nested types and `partial` types across files do not count as violations.
+  - The solution builds with **0 warnings / 0 errors** (`TreatWarningsAsErrors`),
+    and **all pre-existing tests stay green** — this is a pure refactor with no
+    behaviour change.
+- **Tests:**
+  - The guard test passes against the refactored tree, and is proven to actually
+    guard: a fixture string declaring two top-level types is detected as a
+    violation (so an accidental regression would fail CI). All existing suites
+    remain green.
+
+## M21 — Weekly budget period (multi-period budgeting)
+
+- **Spec ref:** §6.2.1, §6.2.2, §7, §9.4, §10.2
+- **Depends on:** M20 (and builds on M3, M10, M11, M13, M15, M17)
+- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Acceptance criteria:**
+  - `BudgetPeriodType` enum (`Monthly`, `Weekly`); `BudgetPeriod` generalised to
+    identify a concrete instance of either type — calendar month, or **ISO-8601
+    week starting Monday (UTC)** — exposing `[Start, End)`, `Contains`,
+    `Next`/`Previous`, and the `YYYY-MM` / `YYYY-Www` keys (§7).
+  - `GroupBudget` and `UserBudgetOverride` carry a `PeriodType`; uniqueness is
+    `(GroupId, PeriodType)` and `(CallerId, PeriodType)` respectively. Shared
+    repositories + the admin write path updated; EF migration applies cleanly.
+  - **Per-period effective-budget resolution** producing an effective-budget
+    **set**: for each period type, the per-user override of that type wins, else
+    the **largest group budget of that type**; a period type with no configured
+    budget is excluded from the set (§7).
+  - `UserBudgetGrain` tracks running spend **per period type**, accrues each
+    capture's cost to **every** configured dimension, rolls each dimension over
+    independently, and decides allow/deny as the **AND** across configured periods
+    (any zero/exhausted period → deny; empty set → governed by
+    `AllowNonBudgetedUsers`).
+  - `/api/budget/check` and `/api/usage/capture` return the per-period `budgets`
+    array (§6.2.1, §6.2.2); error envelopes unchanged.
+  - Audit (§9.4): exactly one `usage_events` row per capture **plus** one
+    `usage_event_period_accruals` child row per accrued dimension
+    (`period_type`, `period_key`, `effective_group_id`, `budget_source`,
+    `effective_budget_amount`, `running_spend_after`); idempotency on `requestId`
+    preserved; migration applies cleanly.
+  - Telemetry (§10.2): spans/metrics/logs carry a `budget_period` tag and the
+    **binding-period** `effective_group` / `budget_source`.
+  - Admin App (§12.3): set / update / clear a group's **Monthly and Weekly**
+    budgets, and **Monthly / Weekly** per-user overrides.
+- **Tests:**
+  - **Domain:** weekly boundary + rollover (ISO week, Monday start), period-key
+    formatting, per-period resolution incl. largest-within-type and
+    override-of-type-wins.
+  - **Grain:** one capture accrues to both monthly + weekly; dimensions roll over
+    independently; allowed only when *every* configured period has remaining;
+    zero-budget period cut-off; unbudgeted via `AllowNonBudgetedUsers`.
+  - **API / contract:** per-period response shape for check & capture (allow when
+    all periods pass, deny when any fails); contract suite updated.
+  - **Audit:** child rows written per dimension; zero child rows for an
+    unbudgeted-allowed capture; weekly and monthly running spend reconstructible
+    from the ledger.
+  - **Admin (bUnit + real Postgres):** set weekly + monthly on a group; per-period
+    override; validation (negative rejected, zero accepted).
+  - **Telemetry:** `budget_period` + binding-period tags asserted via an in-memory
+    exporter.
+
+## M22 — Additional providers (Azure AI Foundry, Vertex AI)
+
+- **Spec ref:** §6.2.3, §8.1, §8.2, §8.5
+- **Depends on:** M20 (and builds on M5, M6, M9)
+- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Acceptance criteria:**
+  - `Provider` enum gains `AzureFoundry` and `VertexAI`; canonical-file / string
+    mapping `azure-foundry` and `vertex-ai` (§8.5); provider parse/serialise paths
+    (validator, DTOs, repositories, `"{provider}:{model}"` grain key) updated.
+  - Two adapters — `AzureFoundryPricingAdapter`, `VertexAIPricingAdapter` —
+    implementing `IPricingAdapter` via `PricingAdapterBase` (live fetch →
+    persisted fallback → staleness), registered with the refresh job.
+  - Provider resolution (§6.2.3): an explicit `azure-foundry` / `vertex-ai` is
+    accepted; the inference prefix-map carries **no** entries for them (a
+    provider-omitted `gpt*` / `gemini*` / `claude*` still resolves to its native
+    vendor); capture under an explicit hosting provider prices via that exact
+    `(provider, model)`.
+  - `PricingFileValidator` accepts files declaring the two new providers.
+- **Tests:**
+  - Each new adapter against fixture payloads: happy path → correct
+    `ModelPricing`; simulated fetch failure → fallback to persisted + staleness
+    signal asserted.
+  - Provider resolution: explicit foundry/vertex resolved; provider omitted +
+    `gpt*` → `openai` (not foundry); unknown provider → unknown-model reject.
+  - Validator accepts the new provider strings; capture for
+    `(vertex-ai, claude-3-5-sonnet)` prices independently of
+    `(anthropic, claude-3-5-sonnet)`.
+
+## M23 — Pricing version history (insert-on-change) + usage references version
+
+- **Spec ref:** §8.7, §9.2, §9.4
+- **Depends on:** M20, M22 (and builds on M4, M7, M9, M11)
+- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Acceptance criteria:**
+  - `model_pricing` becomes **append-only versioned**: immutable rows with a
+    surrogate id + `EffectiveFrom`; **no upsert**. The repository exposes
+    "latest version for `(provider, model)`" and an "insert-version-if-changed"
+    write.
+  - **Insert-on-change** in the §8.4 refresh job and the §8.3 Admin upload (the
+    only two writers): compare incoming prices to the latest version and insert a
+    new version **only** when `input`/`output`/`cacheRead`/`cacheWrite`/`currency`/
+    `unit` differ; first sighting inserts unconditionally; otherwise a no-op.
+  - Current price = latest by `EffectiveFrom` (covering index). Staleness is
+    **derived** from the latest version's `fetchedAt` + cadence — version rows are
+    never mutated (§8.7).
+  - The `pricing-updated` stream event carries the new **version id(s)**;
+    `PricingGrain` caches the current version's id + prices and refreshes on push.
+  - `UsageEvent` / `usage_events` replaces the embedded `unit_prices`
+    (`TokenPrices`) with a `pricing_version_id` FK (§9.4); capture records the
+    version it priced with; FK retention prevents pruning a referenced version;
+    migration applies cleanly.
+- **Tests:**
+  - Insert-on-change: first insert creates v1; an identical re-fetch adds **no**
+    row; a changed price creates v2; `current()` returns v2.
+  - Capture writes `pricing_version_id` referencing the current version;
+    idempotency on `requestId` unaffected; cost equals tokens × the referenced
+    version's prices (reconstructable from the ledger).
+  - `PricingGrain` refreshes to the new version on a stream push (observed across
+    multiple activations).
+  - Admin upload inserts a version on change and is a no-op when unchanged.
+  - Migration applies from scratch and is idempotent (Testcontainers Postgres).
