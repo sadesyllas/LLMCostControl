@@ -45,7 +45,7 @@ served a given request beyond the model name reported by the gateway.
 | **Gateway** | The external LLM gateway that calls this tracker. Its identity is unknown to us. |
 | **Caller id** | The identity of the end user/consumer of the LLM call, typically an email. This is the budget subject. |
 | **Model** | A provider model name as reported by the gateway (e.g. `gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro`). |
-| **Provider** | The LLM provider that served the call (`openai` \| `anthropic` \| `google`). Pricing is keyed by **(provider, model)**, so the same model name may exist under more than one provider. The provider may be supplied on the call, or inferred from the model name (see §6.2.3). |
+| **Provider** | The LLM provider that priced the call (`openai` \| `anthropic` \| `google` \| `azure-foundry` \| `vertex-ai`). Pricing is keyed by **(provider, model)**, so the same model name may exist under more than one provider. The provider may be supplied on the call, or — for the native vendors only — inferred from the model name (see §6.2.3). |
 | **Adapter** | A per-provider component that knows how to fetch current pricing for that provider's models. |
 | **Effective budget** | The budget that applies to a caller id after resolving groups + user override. |
 | **Running spend** | The accumulated cost for a caller id within the current budget period. |
@@ -127,16 +127,36 @@ Response:
 
 ```
 {
-  "allowed": true,
+  "allowed": false,                       // logical AND across every configured period (§7)
   "callerId": "alice@example.com",
-  "effectiveBudget": { "amount": 50.0, "currency": "USD" },
-  "runningSpend": { "amount": 12.34, "currency": "USD" },
-  "remaining": { "amount": 37.66, "currency": "USD" }
+  "budgets": [                            // one entry per configured period type; empty when unbudgeted
+    {
+      "period": "Monthly",
+      "periodKey": "2026-06",
+      "budgetSource": "Group",            // Group | UserOverride
+      "effectiveGroupId": "…",            // null for UserOverride
+      "effectiveBudget": { "amount": 50.0, "currency": "USD" },
+      "runningSpend":    { "amount": 12.34, "currency": "USD" },
+      "remaining":       { "amount": 37.66, "currency": "USD" }
+    },
+    {
+      "period": "Weekly",
+      "periodKey": "2026-W26",
+      "budgetSource": "Group",
+      "effectiveGroupId": "…",
+      "effectiveBudget": { "amount": 10.0, "currency": "USD" },
+      "runningSpend":    { "amount": 10.0, "currency": "USD" },
+      "remaining":       { "amount": 0.0,  "currency": "USD" }
+    }
+  ]
 }
 ```
 
-- Returns `allowed: false` when remaining budget ≤ 0 (e.g. an explicit budget of
-  `0`, see §7), or below a configurable threshold.
+- `allowed` is the logical **AND** over `budgets`: `true` only if **every** entry
+  has `remaining > 0`. Any exhausted or zero period (see §7) makes the call
+  `denied`. A configurable threshold may raise the deny floor above `0`.
+- When the caller is **unbudgeted** (no configured budget of any period type),
+  `budgets` is empty and `allowed` follows `AllowNonBudgetedUsers` (§7).
 - The tracker does **not** reserve/hold any amount at check time in iteration 1
   (no pending holds). Concurrency note: a caller may overspend between check and
   capture if many requests are in flight; accepted for iteration 1.
@@ -169,15 +189,29 @@ Response:
 ```
 {
   "callerId": "alice@example.com",
-  "cost": { "amount": 0.0123, "currency": "USD" },
-  "runningSpend": { "amount": 12.3523, "currency": "USD" },
-  "remaining": { "amount": 37.6477, "currency": "USD" }
+  "cost": { "amount": 0.0123, "currency": "USD" },   // reported once; period-independent
+  "budgets": [                                        // running spend after this capture, per configured period type
+    {
+      "period": "Monthly",
+      "periodKey": "2026-06",
+      "runningSpend": { "amount": 12.3523, "currency": "USD" },
+      "remaining":    { "amount": 37.6477, "currency": "USD" }
+    },
+    {
+      "period": "Weekly",
+      "periodKey": "2026-W26",
+      "runningSpend": { "amount": 10.0123, "currency": "USD" },
+      "remaining":    { "amount": -0.0123, "currency": "USD" }
+    }
+  ]
 }
 ```
 
 - The tracker resolves the model's current **input / output / cache-read /
   cache-write** unit prices, multiplies by the reported token counts, sums to a
-  total cost, and accrues it against the caller's running spend.
+  total cost, and accrues that cost to the caller's running spend in **every**
+  configured period dimension (§7). `cost` is reported once; `budgets` carries the
+  post-capture running spend / remaining for each period type.
 - `requestId`, when present, is used for **idempotency**: a duplicate capture
   with the same `requestId` must not double-accrue.
 - Pricing is resolved by **(provider, model)** (§8.1). The provider is determined
@@ -205,37 +239,70 @@ for a call is resolved in this order:
    is available, the call is treated as **unknown model** and rejected on capture
    (fail-closed — never priced at zero).
 
+**Hosting providers (`azure-foundry`, `vertex-ai`) are explicit-only.** Because a
+hosting provider serves models that originate from other vendors (Vertex AI serves
+both Gemini *and* Claude; Azure AI Foundry serves GPT and others), a model name
+alone cannot distinguish them from the native vendor. The prefix-inference map
+(step 2) therefore carries **no** entries for `azure-foundry` / `vertex-ai`: when
+`provider` is omitted, a `gemini*` / `claude*` / `gpt*` model still resolves to its
+**native** vendor (`google` / `anthropic` / `openai`). To price a call under a
+hosting provider the gateway **must** send `provider` explicitly (step 1).
+
 ## 7. Budget model
 
 - A **budget** is an amount of money (with currency) that applies to a budget
-  subject for the current budget period.
-- Budget period for iteration 1: **calendar month**, resetting on the first day
-  of the month. (Open: configurable period — deferred.)
-- Budgets are attached to **groups**. A caller id may belong to zero or more
-  groups.
-- **Effective budget resolution** for a caller id, in priority order:
-  1. If an **explicit per-user budget** is set on the caller id, that value
-     applies (special-case override).
+  subject for the current instance of a given **budget period type**.
+- **Budget period types (resolved Q7 — multi-period).** Iteration 1 supports two
+  period types, modelled by the `BudgetPeriodType` enum (extensible):
+  - **`Monthly`** — calendar month, resetting on the first day of the month
+    (UTC). Period key `YYYY-MM` (e.g. `2026-06`).
+  - **`Weekly`** — ISO-8601 week starting **Monday** (UTC), resetting Monday
+    `00:00`. Period key `YYYY-Www` (e.g. `2026-W26`).
+
+  A `BudgetPeriod` value identifies one concrete instance of a type (its
+  `PeriodType`, its `[Start, End)` boundaries, and its key); each type rolls over
+  on its own boundary, independently of the others.
+- Budgets are attached to **groups**, **per period type**: a group may hold at
+  most **one** budget per period type (e.g. a monthly budget *and* a weekly
+  budget). A caller id may belong to zero or more groups.
+- **Effective budget resolution is per period type.** For each period type for
+  which the caller has any configured budget, the effective budget of that type is
+  resolved in priority order:
+  1. If an **explicit per-user override** is set on the caller for that period
+     type, that value applies (special-case override).
   2. Otherwise, among all groups the caller belongs to, the **largest** budget
-     applies.
-   3. If the caller belongs to no group and has no explicit budget, the caller
-      has **no budget**. The check is **fail-closed by default**: such a caller
-      is denied. This is configurable via the application setting
-      `AllowNonBudgetedUsers` (default `false`); when set to `true`, unbudgeted
-      callers are allowed through the check (their spend is still recorded for
-      audit, but the check never gates them).
-- A budget amount of **zero is a valid, explicit budget** — a deliberate "spend
-  nothing" / cut-off — and is **distinct from having *no* budget**. A caller whose
-  effective budget is `0` is **always denied** (remaining ≤ 0), *regardless of*
-  `AllowNonBudgetedUsers`; that setting governs **only** callers with no budget at
-  all (resolution case 3 above). Setting a group's budget to `0` is therefore a
-  supported way to immediately cut the group off (visible within the budget cache
-  TTL, §12.4). A **negative** budget amount is invalid and rejected at the admin
-  surface (§12.3).
-- Running spend is tracked per caller id and resets with the period.
-- Membership and budget administration (how a person is added to a group, how a
-  group's budget is set, how a per-user override is set) is **out of scope** for
-  iteration 1 and will be specified in a follow-up (see §10).
+     **of that period type** applies. ("Largest wins" is evaluated *within* each
+     period type — never across types, so a $100/month and a $50/week budget are
+     never compared to each other.)
+
+  The result is an **effective-budget set** — zero or more `(period type →
+  effective budget)` entries. A period type for which the caller has *no*
+  configured budget is **not** in the set and does **not** gate the caller.
+- **Accrual is multi-dimensional.** A single capture's cost is accrued to the
+  running spend of **every** period type in the caller's effective-budget set —
+  one $1 prompt adds $1 to both the weekly and the monthly running spend. Each
+  running-spend dimension resets on its own period boundary.
+- **Check decision.** A caller is **allowed** iff, for **every** period type in
+  the effective-budget set, `remaining = effectiveBudget − runningSpend` is `> 0`.
+  If **any** configured period is exhausted (`remaining ≤ 0`), the caller is
+  **denied**. If the effective-budget set is **empty** (no group budget of any
+  type and no override of any type), the caller is **unbudgeted** — the check is
+  **fail-closed by default** (denied), configurable via `AllowNonBudgetedUsers`
+  (default `false`); when `true`, unbudgeted callers pass the check (their spend is
+  still recorded for audit, but no period gates them).
+- A budget amount of **zero is a valid, explicit budget** for its period type — a
+  deliberate "spend nothing" / cut-off — and is **distinct from having *no* budget
+  of that type**. A caller whose effective budget for any configured period type
+  is `0` is **always denied** (that period's remaining ≤ 0), *regardless of*
+  `AllowNonBudgetedUsers`; that setting governs **only** callers with no budget of
+  any type at all. Setting a group's budget for a period type to `0` is therefore a
+  supported way to immediately cut the group off for that period (visible within
+  the budget cache TTL, §12.4). A **negative** amount is invalid and rejected at
+  the admin surface (§12.3).
+- Running spend is tracked per caller id **per period type**, and each dimension
+  resets with its own period.
+- Group, membership, and per-user-override administration (including setting a
+  group's monthly and/or weekly budget) is delivered through the Admin App (§12).
 
 ## 8. Pricing model & provider adapters
 
@@ -262,7 +329,10 @@ the unit prices for that exact (provider, model) pair.
 
 ### 8.2 Adapters
 
-- One adapter per provider: **Google**, **OpenAI**, **Anthropic**.
+- One adapter per provider: **Google**, **OpenAI**, **Anthropic**, **Azure AI
+  Foundry** (`azure-foundry`), **Vertex AI** (`vertex-ai`). The two hosting
+  providers price models served on their platforms and are addressed by an
+  **explicit** `provider` on the call (§6.2.3).
 - An adapter implements a common interface:
   - `Task<IReadOnlyCollection<ModelPricing>> FetchAsync(CancellationToken ct)`
 - Each adapter encapsulates the specific way that provider's pricing is obtained
@@ -347,9 +417,10 @@ format may be JSON or YAML):
 
 Required fields per model entry:
 
-- `provider` — one of `openai` | `anthropic` | `google` (extensible). Together
-  with `model` it forms the **(provider, model) join key** used by the capture
-  path; model names must be unique **within** a provider (not globally).
+- `provider` — one of `openai` | `anthropic` | `google` | `azure-foundry` |
+  `vertex-ai` (extensible). Together with `model` it forms the **(provider, model)
+  join key** used by the capture path; model names must be unique **within** a
+  provider (not globally).
 - `model` — the model name **as the gateway reports it**.
 - `fetchedAt` — ISO-8601 timestamp of when these prices were obtained.
 - `prices.input`, `prices.output` — mandatory, non-null.
@@ -410,6 +481,36 @@ with no polling tax on the DB.
   activations is negligible; the benefit is contention-free, local reads on the
   capture path.
 
+### 8.7 Pricing version history (insert-on-change)
+
+Pricing is stored as an **append-only, versioned history** rather than an upserted
+"current" row (resolved Q8):
+
+- Every distinct set of unit prices for a `(provider, model)` pair is a separate,
+  **immutable** `model_pricing` **version** row, identified by a stable surrogate
+  id and an `EffectiveFrom` timestamp. Version rows are never updated or deleted.
+- The pricing writer — the §8.4 refresh job and the §8.3 Admin upload, which
+  remain the **only** two writers — performs **insert-on-change**: it compares the
+  incoming prices against the **latest** version for that `(provider, model)` and
+  inserts a **new** version **only** when something material differs (`input`,
+  `output`, `cacheRead`, `cacheWrite`, `currency`, or `unit`). When nothing
+  changed it is a **no-op** (no new row). The first time a `(provider, model)` is
+  seen, its version is inserted unconditionally.
+- The **current** price for a `(provider, model)` is the version with the greatest
+  `EffectiveFrom` (a covering index supports this lookup).
+- **Staleness is derived, not mutated.** Because version rows are immutable, the
+  `staleSince` signal (§8.2) is no longer persisted as a mutation on the row; it is
+  computed at read time from the latest version's `fetchedAt` and the provider's
+  configured refresh cadence. Fallback-to-persisted (§8.2) reads the latest
+  version.
+- `PricingGrain` (§8.6) caches the **current version's** id and prices; the
+  `pricing-updated` stream event (§8.6) carries the affected `(provider, model)`
+  and its new **version id(s)** so activations refresh to the new version.
+- Usage rows reference the exact version used to price them (§9.4), so a later
+  price change never rewrites history and no per-row price snapshot is needed.
+  Version rows are **retained** for as long as any `usage_events` row references
+  them; pruning is coupled to the deferred compaction/archival work (§15.4).
+
 ## 9. State management & persistence
 
 ### 9.1 Orleans
@@ -425,11 +526,14 @@ with no polling tax on the DB.
 ### 9.2 PostgreSQL
 
 PostgreSQL is the single source of truth for:
-- Per-caller running spend (per period) — Orleans grain storage.
-- Pricing history / current pricing per model — written by the refresh job.
-- Groups, group membership, group budgets, per-user budget overrides — written
-  by the (deferred) administration surface; read by the budget resolution path.
-- Captured usage events (append-only ledger) — for audit and period rebuild.
+- Per-caller running spend (per period type) — Orleans grain storage.
+- Versioned, append-only pricing history per (provider, model) — written by the
+  refresh job / Admin upload (§8.7); the current price is the latest version.
+- Groups, group membership, group budgets (per period type), per-user budget
+  overrides (per period type) — written by the Admin App (§12); read by the budget
+  resolution path.
+- Captured usage events (append-only ledger) with their per-period accrual child
+  rows (§9.4) — for audit and period rebuild.
 
 ### 9.3 Concurrency & consistency
 
@@ -441,32 +545,50 @@ PostgreSQL is the single source of truth for:
 ### 9.4 Usage audit trail (per-capture ledger rows)
 
 - For **every** successful `capture` call (i.e. every LLM response for which the
-  tracker updates a caller's running cost), exactly **one new row** is appended
-  to the `usage_events` table in PostgreSQL.
-- A row contains, at minimum:
+  tracker updates a caller's running cost), exactly **one new row** is appended to
+  the `usage_events` table in PostgreSQL, plus one child
+  `usage_event_period_accruals` row **per period dimension** the capture accrued to
+  (§7).
+- The **`usage_events`** row holds the period-independent facts of the capture:
   - `event_id` — unique id (the `requestId` from the capture, when supplied, is
     used as the idempotency/natural key; otherwise a generated GUID).
   - `caller_id` — the end-user id (typically email).
-  - `effective_group_id` — the **group whose budget was in effect** for this
-    capture (the group that provided the largest active budget, or `null` if the
-    caller is unbudgeted / per-user-override). Captured at capture time so the
-    audit row reflects the budget source used for the decision, even if membership
-    changes later.
-  - `budget_source` — enum: `Group` | `UserOverride` | `None`.
   - `model` — the model name reported by the gateway.
   - `provider` — the provider that priced the call (resolved per §6.2.3), so the
     row is unambiguous when a model name is shared across providers (§8.5).
   - `tokens_input`, `tokens_output`, `tokens_cache_read`, `tokens_cache_write`.
-  - `unit_prices` — snapshot of the input/output/cacheRead/cacheWrite unit prices
-    used to compute the cost (so a future pricing change never rewrites history).
+  - `pricing_version_id` — **reference to the immutable `model_pricing` version
+    (§8.7) whose unit prices were used to compute the cost.** This replaces the
+    former embedded `unit_prices` snapshot: because version rows are immutable and
+    retained while referenced, the reference is just as stable as a snapshot, and a
+    future pricing change never rewrites history.
   - `cost_amount`, `cost_currency` — the computed cost.
-  - `running_spend_after` — the caller's running spend after this capture.
-  - `period` — the budget period (e.g. `2026-06` for monthly).
   - `captured_at` — server-side timestamp.
-- The ledger is **append-only**: no updates, no deletes. Running spend can be
-  reconstructed by summing `cost_amount` per `caller_id` per `period`.
+- Each **`usage_event_period_accruals`** child row (keyed `(event_id,
+  period_type)`) records, for one budget dimension in effect at capture time:
+  - `period_type` — `Monthly` | `Weekly` (extensible, §7).
+  - `period_key` — the concrete period instance (e.g. `2026-06`, `2026-W26`).
+  - `effective_group_id` — the **group whose budget was in effect** for that
+    period dimension (the group that provided the largest active budget *of that
+    type*), or `null` for a per-user override. Captured at capture time so the
+    audit reflects the source used for the decision, even if membership changes
+    later.
+  - `budget_source` — enum: `Group` | `UserOverride`.
+  - `effective_budget_amount` — the effective budget for that period at capture
+    time.
+  - `running_spend_after` — the caller's running spend for that period after this
+    capture.
+
+  An **unbudgeted** caller allowed through by `AllowNonBudgetedUsers` (§7) accrues
+  to no dimension, so its `usage_events` row simply has **zero** child rows; the
+  cost is still fully auditable via `cost_amount`.
+- The ledger is **append-only**: no updates, no deletes. Running spend for any
+  caller, period type, and period instance can be reconstructed by summing
+  `cost_amount` over the matching `usage_events` rows (`captured_at` places each
+  cost in the correct period instance of every type).
 - Snapshotting/historicity (compaction, archival, point-in-time queries over
-  running spend) is explicitly deferred — see §15.
+  running spend) is explicitly deferred — see §15. Note that pruning `usage_events`
+  is coupled to retaining the `model_pricing` versions they reference (§8.7).
 
 ## 10. Non-functional requirements
 
@@ -512,7 +634,12 @@ PostgreSQL is the single source of truth for:
   so dashboards and alerts can be sliced by group. The values are resolved by the
   `UserBudgetGrain` at decision time (the same values persisted to the audit row
   per §9.4) and propagated into the current activity/log context for the duration
-  of the request.
+  of the request. With multiple budget period dimensions (§7), each telemetry item
+  additionally carries a `budget_period` tag, and `effective_group` /
+  `budget_source` reflect the **binding** period — the period that determined the
+  decision: on a deny, the exhausted period; on an allow, the period with the least
+  remaining headroom. This keeps tag cardinality bounded while tying the telemetry
+  to the constraint that actually mattered.
 - **PII Protection & Anonymization (required):** To prevent leaking Personal Identifiable Information (PII) like email addresses into public telemetry backends (Traces, Metrics, Logs) and to avoid high-cardinality metric label explosions, any recording of `caller_id` in telemetry must be anonymized. The system must hash the caller ID using HMAC-SHA-256 with a configuration-driven secret `TelemetryPepper`. The `TelemetryPepper` must be present in the configuration at host startup; if it is missing or empty, the application must fail-fast by throwing an exception. Changing the pepper in the future will alter generated hashes, which makes historical metrics correlation problematic.
 
 ### 10.3 Configuration
@@ -759,7 +886,8 @@ the IDE/debugger so they can be stepped through. Services:
 
 To be specified in a follow-up section of this document:
 
-1. **Budget period** configurability (monthly default; weekly/quarterly/custom).
+1. **Budget period** configurability — `Monthly` and `Weekly` are delivered in
+   iteration 1 (§7); `Quarterly` / custom periods remain deferred.
 2. **Hierarchical budgeting (nested groups).** Groups may be nested; budgets can
    be assigned at any level of the hierarchy. In the hierarchical case, **every
    higher-level group has an active grain** tracking the budget remaining at that
@@ -775,7 +903,9 @@ To be specified in a follow-up section of this document:
 4. **DB snapshotting & historicity.** The `usage_events` ledger (§9.4) is
    append-only and grows unbounded; a strategy for snapshots, compaction,
    archival, and point-in-time reconstruction of per-caller / per-group running
-   spend is deferred to a future step.
+   spend is deferred to a future step. Any pruning strategy must also account for
+   the `model_pricing` version rows referenced by `usage_events.pricing_version_id`
+   (§8.7, §9.4) — they cannot be removed while a usage row still references them.
 5. Currency normalisation policy across providers (rates source, when to
    convert, how to store mixed-currency budgets).
 6. EF migration application strategy in non-Development environments
@@ -793,3 +923,20 @@ To be specified in a follow-up section of this document:
 | Q4 | Pricing grain refresh mechanism | **Resolved** — Orleans streams (push); `PricingGrain` is a `[StatelessWorker]` local grain with multiple activations per silo. See §8.6. |
 | Q5 | Grain-side invalidation of budget/group data after admin writes | **Resolved** — 30 s TTL; each `UserBudgetGrain` re-reads the effective budget from the DB at most every 30 s. Configurable via `BudgetCacheTtlSeconds` (default `30`). See §12.4. |
 | Q6 | Per-provider pricing & provider resolution | **Resolved** — pricing keyed by **(provider, model)**; `PricingGrain` keyed by `"{provider}:{model}"`. Provider is taken from the call when supplied, else inferred from the model name via a **config-file** prefix map (`Pricing:ProviderInference`), else the call is unknown-model rejected. See §6.2.3, §8.1, §8.5, §8.6. |
+| Q7 | Budget period model (monthly + weekly) | **Resolved** — **multi-period**: budgets are configured per `BudgetPeriodType` (`Monthly`, `Weekly`); resolution and "largest wins" are evaluated **within** each period type; a capture accrues to **every** configured period dimension; the check is allowed iff every configured period has remaining > 0. See §6.2.1, §6.2.2, §7, §9.4. |
+| Q8 | Pricing storage (snapshot vs versioned) | **Resolved** — pricing is an **append-only versioned history** (surrogate id + `EffectiveFrom`), written **insert-on-change**; the current price is the latest version; `usage_events` references the `pricing_version_id` used instead of embedding a price snapshot. See §8.7, §9.4. |
+
+## 17. Coding standards
+
+- **One top-level type definition per file.** Each `.cs` file in the `src/`
+  projects declares **at most one** top-level type — a single `class`, `struct`,
+  `record`, `interface`, or `enum`. An interface and its implementation, or two
+  enums, must live in separate files, and the file name matches the type it
+  declares.
+  - *Allowed:* **nested** types (declared inside their containing type), `partial`
+    types split across files, and a file's top-level statements.
+  - *Exempt:* `Program.cs` (top-level statements); generated code — EF Core
+    migration `*.Designer.cs` / model snapshot — and anything under `obj/` / `bin/`.
+- The rule is enforced by an **automated architecture test** that parses each
+  production source file's syntax tree and fails the build if any non-exempt file
+  declares more than one top-level type, so the standard cannot silently regress.

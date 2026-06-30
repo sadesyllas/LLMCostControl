@@ -37,4 +37,6 @@
 
 8. **Always keep `SPEC.md` up-to-date.** Any changes to application architecture, endpoint designs, validation logic, configurations, or core features must be immediately and accurately reflected in `SPEC.md`. Never let code changes drift from the specification.
 
+9. **One top-level type definition per file.** Each `.cs` file in `src/` declares at most one top-level type (`class`/`struct`/`record`/`interface`/`enum`); an interface and its implementation must not share a file, and the file name matches the type. Nested types, `partial` types across files, and `Program.cs` top-level statements are allowed; generated EF migration `*.Designer.cs`/snapshot and `obj/`/`bin/` are exempt. Enforced by an automated architecture test (SPEC §17).
+
 
