@@ -4,8 +4,6 @@ using LLMCostControl.Admin.App.Components;
 using LLMCostControl.Admin.App.Components.Pages;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
-using FluentAssertions;
 
 namespace LLMCostControl.Admin.App.Tests;
 

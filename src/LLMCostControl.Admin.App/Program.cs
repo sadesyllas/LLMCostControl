@@ -1,6 +1,5 @@
 using LLMCostControl.Admin.App.Components;
 using LLMCostControl.Infrastructure.Data;
-using LLMCostControl.Infrastructure.Repositories;
 using LLMCostControl.Observability;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.EntityFrameworkCore;

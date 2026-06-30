@@ -1,15 +1,9 @@
 using LLMCostControl.Domain.Pricing;
-using LLMCostControl.Grains.Abstractions.StreamEvents;
-using LLMCostControl.Grains.Implementations;
 using LLMCostControl.Grains.Options;
 using LLMCostControl.Grains.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Orleans;
-using Orleans.Hosting;
-using Orleans.Streams;
 using Orleans.TestingHost;
-using Xunit;
 
 namespace LLMCostControl.Grains.Tests;
 

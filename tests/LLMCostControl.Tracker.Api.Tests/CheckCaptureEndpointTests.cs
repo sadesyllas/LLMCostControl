@@ -1,15 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using LLMCostControl.Domain.Budgets;
 using LLMCostControl.Domain.Common;
 using LLMCostControl.Domain.Pricing;
-using LLMCostControl.Grains.Abstractions;
 using LLMCostControl.Grains.Options;
 using LLMCostControl.Grains.Storage;
 using LLMCostControl.Grains.Tests;
 using LLMCostControl.Tracker.Api.Endpoints;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;

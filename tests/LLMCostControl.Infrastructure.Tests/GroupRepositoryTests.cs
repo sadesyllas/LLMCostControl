@@ -1,5 +1,4 @@
 using LLMCostControl.Domain.Budgets;
-using LLMCostControl.Domain.Common;
 using LLMCostControl.Infrastructure.Repositories;
 
 namespace LLMCostControl.Infrastructure.Tests;

@@ -1,5 +1,3 @@
-using LLMCostControl.Observability;
-
 namespace LLMCostControl.Observability.Tests;
 
 /// <summary>

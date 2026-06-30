@@ -1,14 +1,11 @@
 using System.Diagnostics;
-using System.Net;
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions;
-using LLMCostControl.Grains.Implementations;
 using LLMCostControl.Grains.Options;
 using LLMCostControl.Grains.Publishers;
 using LLMCostControl.Grains.Storage;
 using LLMCostControl.Infrastructure.Data;
 using LLMCostControl.Infrastructure.Pricing;
-using LLMCostControl.Infrastructure.Repositories;
 using LLMCostControl.Observability;
 using LLMCostControl.Tracker.Api.Auth;
 using LLMCostControl.Tracker.Api.Endpoints;
@@ -53,7 +50,7 @@ var authOptions = builder.Configuration.GetSection("GatewayAuth").Get<GatewayAut
 
 if (authOptions.IsEnabled)
 {
-    var authBuilder = builder.Services
+    builder.Services
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(jwt =>
         {

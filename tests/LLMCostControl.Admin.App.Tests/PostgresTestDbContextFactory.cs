@@ -1,4 +1,3 @@
-using System;
 using LLMCostControl.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 

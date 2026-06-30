@@ -1,16 +1,9 @@
-using System;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading.Tasks;
 using LLMCostControl.Domain.Budgets;
 using LLMCostControl.Domain.Common;
 using LLMCostControl.Domain.Pricing;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Xunit;
-using FluentAssertions;
 
 namespace LLMCostControl.Tracker.Api.Tests;
 

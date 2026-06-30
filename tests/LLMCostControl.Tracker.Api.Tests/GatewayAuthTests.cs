@@ -1,10 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using LLMCostControl.Tracker.Api.Auth;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace LLMCostControl.Tracker.Api.Tests;

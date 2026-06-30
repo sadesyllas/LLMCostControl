@@ -1,6 +1,5 @@
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Infrastructure.Pricing;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LLMCostControl.Infrastructure.Tests;
 

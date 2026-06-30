@@ -1,7 +1,5 @@
-using System.Net.Http;
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Infrastructure.Pricing;
-using LLMCostControl.Infrastructure.Repositories;
 
 namespace LLMCostControl.Infrastructure.Tests;
 
