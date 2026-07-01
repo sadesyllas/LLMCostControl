@@ -33,7 +33,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M20 | Coding standard: one top-level type per `.cs` file + guard | §17 | M19 | [x] | [x] |
 | M21 | Weekly budget period (multi-period budgeting) | §6.2.1, §6.2.2, §7, §9.4, §10.2 | M20 | [x] | [x] |
 | M22 | Additional providers (Azure AI Foundry, Vertex AI) | §6.2.3, §8.1, §8.2, §8.5 | M20 | [x] | [x] |
-| M23 | Pricing version history (insert-on-change) + usage references version | §8.7, §9.2, §9.4 | M20, M22 | [ ] | [ ] |
+| M23 | Pricing version history (insert-on-change) + usage references version | §8.7, §9.2, §9.4 | M20, M22 | [x] | [x] |
 
 > **Iteration 2 (M20–M23)** is owner-authorized scope added after M19. The
 > coding-standard refactor (M20) lands first so all subsequent code conforms;
