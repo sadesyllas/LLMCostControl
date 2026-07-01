@@ -344,6 +344,54 @@ public class UserBudgetGrainTests : GrainTestBase
     }
 
     [Fact]
+    public async Task Capture_resolves_additional_providers_independently_and_honors_explicit_providers()
+    {
+        // 1. Seed prices
+        Store.SetPricing(ModelPricing.Create(Provider.OpenAI, "gpt-4o-res-unique", TokenPrices.Create(1m, 1m)));
+        Store.SetPricing(ModelPricing.Create(Provider.AzureFoundry, "gpt-4o-res-unique", TokenPrices.Create(5m, 5m)));
+        Store.SetPricing(ModelPricing.Create(Provider.Anthropic, "claude-3-5-sonnet-res-unique", TokenPrices.Create(3m, 3m)));
+        Store.SetPricing(ModelPricing.Create(Provider.VertexAI, "claude-3-5-sonnet-res-unique", TokenPrices.Create(6m, 6m)));
+
+        BudgetStore.SetBudget("tester@example.com", EffectiveBudget.FromUserOverride(Usd(100m)));
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>("tester@example.com");
+
+        // 2. Explicit azure-foundry
+        var resAzure = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o-res-unique",
+            Provider = "azure-foundry",
+            TokensInput = 1_000_000,
+        });
+        resAzure.CostAmount.Should().Be(5m);
+
+        // 3. Provider omitted (gpt-4o-res-unique) -> infers "openai" (not azure-foundry)
+        var resOmitted = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o-res-unique",
+            Provider = null,
+            TokensInput = 1_000_000,
+        });
+        resOmitted.CostAmount.Should().Be(1m);
+
+        // 4. Vertex-AI vs Anthropic independent pricing for the same model name
+        var resVertex = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "claude-3-5-sonnet-res-unique",
+            Provider = "vertex-ai",
+            TokensInput = 1_000_000,
+        });
+        resVertex.CostAmount.Should().Be(6m);
+
+        var resAnthropic = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "claude-3-5-sonnet-res-unique",
+            Provider = "anthropic",
+            TokensInput = 1_000_000,
+        });
+        resAnthropic.CostAmount.Should().Be(3m);
+    }
+
+    [Fact]
     public async Task Check_denies_when_group_budget_is_zero_even_if_unbudgeted_users_are_allowed()
     {
         // Setting a group's budget to 0 is the intended quick "cut-off" lever. A

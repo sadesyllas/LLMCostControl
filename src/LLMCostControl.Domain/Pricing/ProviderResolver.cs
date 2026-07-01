@@ -25,11 +25,28 @@ public static class ProviderResolver
             return false;
         }
 
-        return Enum.TryParse(value.Trim(), ignoreCase: true, out provider) && Enum.IsDefined(provider);
+        var normalized = value.Trim().ToLowerInvariant();
+        if (normalized == "azure-foundry" || normalized == "azurefoundry")
+        {
+            provider = Provider.AzureFoundry;
+            return true;
+        }
+        if (normalized == "vertex-ai" || normalized == "vertexai")
+        {
+            provider = Provider.VertexAI;
+            return true;
+        }
+
+        return Enum.TryParse(normalized, ignoreCase: true, out provider) && Enum.IsDefined(provider);
     }
 
     /// <summary>The canonical lowercase string form of a provider (e.g. <c>"openai"</c>).</summary>
-    public static string ToCanonicalString(Provider provider) => provider.ToString().ToLowerInvariant();
+    public static string ToCanonicalString(Provider provider) => provider switch
+    {
+        Provider.AzureFoundry => "azure-foundry",
+        Provider.VertexAI => "vertex-ai",
+        _ => provider.ToString().ToLowerInvariant()
+    };
 
     /// <summary>
     /// Builds the composite key <c>"{provider}:{model}"</c> used to key the

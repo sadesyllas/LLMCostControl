@@ -410,4 +410,60 @@ public class PricingFileValidatorTests
         result.Entries.Should().BeEmpty();
         result.Errors.Should().NotBeEmpty();
     }
+
+    [Fact]
+    public void Validator_accepts_azure_foundry_and_vertex_ai_providers()
+    {
+        var json = """
+        {
+          "generatedAt": "2026-06-24T12:00:00Z",
+          "currency": "USD",
+          "unit": "per-1M-tokens",
+          "providers": [
+            {
+              "provider": "azure-foundry",
+              "models": [
+                {
+                  "model": "gpt-4o",
+                  "fetchedAt": "2026-06-24T12:00:00Z",
+                  "prices": {
+                    "input": 2.50,
+                    "output": 10.00,
+                    "cacheRead": 1.25,
+                    "cacheWrite": null
+                  }
+                }
+              ]
+            },
+            {
+              "provider": "vertex-ai",
+              "models": [
+                {
+                  "model": "gemini-1.5-pro",
+                  "fetchedAt": "2026-06-24T12:00:00Z",
+                  "prices": {
+                    "input": 1.25,
+                    "output": 5.00,
+                    "cacheRead": null,
+                    "cacheWrite": null
+                  }
+                }
+              ]
+            }
+          ]
+        }
+        """;
+
+        var result = PricingFileValidator.Parse(json);
+
+        result.IsValid.Should().BeTrue();
+        result.Errors.Should().BeEmpty();
+        result.Entries.Should().HaveCount(2);
+
+        var azureGpt = result.Entries.Single(e => e.Provider == Provider.AzureFoundry);
+        azureGpt.Model.Should().Be("gpt-4o");
+
+        var vertexGemini = result.Entries.Single(e => e.Provider == Provider.VertexAI);
+        vertexGemini.Model.Should().Be("gemini-1.5-pro");
+    }
 }

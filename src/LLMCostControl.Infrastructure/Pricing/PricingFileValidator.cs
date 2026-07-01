@@ -19,7 +19,7 @@ public static class PricingFileValidator
 
     private static readonly HashSet<string> KnownProviders = new(StringComparer.OrdinalIgnoreCase)
     {
-        "openai", "anthropic", "google",
+        "openai", "anthropic", "google", "azure-foundry", "vertex-ai",
     };
 
     /// <summary>
@@ -77,11 +77,11 @@ public static class PricingFileValidator
 
             if (!KnownProviders.Contains(providerName))
             {
-                errors.Add($"Unknown provider '{providerName}'. Allowed: openai, anthropic, google.");
+                errors.Add($"Unknown provider '{providerName}'. Allowed: openai, anthropic, google, azure-foundry, vertex-ai.");
                 continue;
             }
 
-            if (!Enum.TryParse<Provider>(providerName, ignoreCase: true, out var provider))
+            if (!ProviderResolver.TryParseProvider(providerName, out var provider))
             {
                 errors.Add($"Provider '{providerName}' could not be mapped to the Provider enum.");
                 continue;

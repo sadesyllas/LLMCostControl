@@ -70,6 +70,46 @@ public class AdapterHappyPathTests
     }
     """;
 
+    private static readonly string AzureFoundryFixture = """
+    {
+      "generatedAt": "2026-06-24T12:00:00Z",
+      "currency": "USD",
+      "unit": "per-1M-tokens",
+      "providers": [
+        {
+          "provider": "azure-foundry",
+          "models": [
+            {
+              "model": "gpt-4o",
+              "fetchedAt": "2026-06-24T12:00:00Z",
+              "prices": { "input": 2.50, "output": 10.00, "cacheRead": 1.25, "cacheWrite": null }
+            }
+          ]
+        }
+      ]
+    }
+    """;
+
+    private static readonly string VertexAIFixture = """
+    {
+      "generatedAt": "2026-06-24T12:00:00Z",
+      "currency": "USD",
+      "unit": "per-1M-tokens",
+      "providers": [
+        {
+          "provider": "vertex-ai",
+          "models": [
+            {
+              "model": "gemini-1.5-pro",
+              "fetchedAt": "2026-06-24T12:00:00Z",
+              "prices": { "input": 1.25, "output": 5.00, "cacheRead": null, "cacheWrite": null }
+            }
+          ]
+        }
+      ]
+    }
+    """;
+
     [Fact]
     public async Task OpenAI_adapter_fetches_and_parses_correctly()
     {
@@ -120,6 +160,44 @@ public class AdapterHappyPathTests
         results.Should().HaveCount(1);
         var gemini = results.Single();
         gemini.Provider.Should().Be(Provider.Google);
+        gemini.Model.Should().Be("gemini-1.5-pro");
+        gemini.Prices.Input.Should().Be(1.25m);
+        gemini.Prices.Output.Should().Be(5m);
+        gemini.Prices.CacheRead.Should().BeNull();
+        gemini.IsStale.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AzureFoundry_adapter_fetches_and_parses_correctly()
+    {
+        using var handler = new StubHttpMessageHandler(AzureFoundryFixture);
+        using var client = new HttpClient(handler);
+        var adapter = new AzureFoundryPricingAdapter(client, "http://test/azure", null!);
+
+        var results = await adapter.FetchAsync();
+
+        results.Should().HaveCount(1);
+        var gpt = results.Single();
+        gpt.Provider.Should().Be(Provider.AzureFoundry);
+        gpt.Model.Should().Be("gpt-4o");
+        gpt.Prices.Input.Should().Be(2.5m);
+        gpt.Prices.Output.Should().Be(10m);
+        gpt.Prices.CacheRead.Should().Be(1.25m);
+        gpt.IsStale.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task VertexAI_adapter_fetches_and_parses_correctly()
+    {
+        using var handler = new StubHttpMessageHandler(VertexAIFixture);
+        using var client = new HttpClient(handler);
+        var adapter = new VertexAIPricingAdapter(client, "http://test/vertex", null!);
+
+        var results = await adapter.FetchAsync();
+
+        results.Should().HaveCount(1);
+        var gemini = results.Single();
+        gemini.Provider.Should().Be(Provider.VertexAI);
         gemini.Model.Should().Be("gemini-1.5-pro");
         gemini.Prices.Input.Should().Be(1.25m);
         gemini.Prices.Output.Should().Be(5m);

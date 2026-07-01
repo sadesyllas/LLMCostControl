@@ -13,4 +13,10 @@ public enum Provider
 
     /// <summary>Google (e.g. gemini-1.5-pro).</summary>
     Google,
+
+    /// <summary>Azure AI Foundry (e.g. azure-foundry:gpt-4o).</summary>
+    AzureFoundry,
+
+    /// <summary>Vertex AI (e.g. vertex-ai:gemini-1.5-pro).</summary>
+    VertexAI,
 }

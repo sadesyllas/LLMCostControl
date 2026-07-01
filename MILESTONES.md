@@ -32,7 +32,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M19 | Contract/conformance tests + E2E local-dev verification | §13.4, §14.3 | M13, M14, M15, M18 | [x] | [x] |
 | M20 | Coding standard: one top-level type per `.cs` file + guard | §17 | M19 | [x] | [x] |
 | M21 | Weekly budget period (multi-period budgeting) | §6.2.1, §6.2.2, §7, §9.4, §10.2 | M20 | [x] | [x] |
-| M22 | Additional providers (Azure AI Foundry, Vertex AI) | §6.2.3, §8.1, §8.2, §8.5 | M20 | [ ] | [ ] |
+| M22 | Additional providers (Azure AI Foundry, Vertex AI) | §6.2.3, §8.1, §8.2, §8.5 | M20 | [x] | [x] |
 | M23 | Pricing version history (insert-on-change) + usage references version | §8.7, §9.2, §9.4 | M20, M22 | [ ] | [ ] |
 
 > **Iteration 2 (M20–M23)** is owner-authorized scope added after M19. The
@@ -466,7 +466,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §6.2.3, §8.1, §8.2, §8.5
 - **Depends on:** M20 (and builds on M5, M6, M9)
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - `Provider` enum gains `AzureFoundry` and `VertexAI`; canonical-file / string
     mapping `azure-foundry` and `vertex-ai` (§8.5); provider parse/serialise paths

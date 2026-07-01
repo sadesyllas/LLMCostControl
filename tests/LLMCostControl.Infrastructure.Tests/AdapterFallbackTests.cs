@@ -79,6 +79,54 @@ public class AdapterFallbackTests : RepositoryTestBase
     }
 
     [Fact]
+    public async Task AzureFoundry_adapter_falls_back_to_persisted_values_on_fetch_failure()
+    {
+        var pricingRepo = new ModelPricingRepository(Db);
+        var seeded = ModelPricing.Create(
+            Provider.AzureFoundry,
+            "gpt-4o",
+            TokenPrices.Create(2.5m, 10m, 1.25m));
+        await pricingRepo.UpsertAsync(seeded);
+
+        using var handler = StubHttpMessageHandler.Throwing();
+        using var client = new HttpClient(handler);
+        var adapter = new AzureFoundryPricingAdapter(client, "http://test/azure", pricingRepo);
+
+        var results = await adapter.FetchAsync();
+
+        results.Should().HaveCount(1);
+        var entry = results.Single();
+        entry.Model.Should().Be("gpt-4o");
+        entry.IsStale.Should().BeTrue();
+        entry.StaleSince.Should().NotBeNull();
+        entry.Prices.Input.Should().Be(2.5m);
+    }
+
+    [Fact]
+    public async Task VertexAI_adapter_falls_back_to_persisted_values_on_fetch_failure()
+    {
+        var pricingRepo = new ModelPricingRepository(Db);
+        var seeded = ModelPricing.Create(
+            Provider.VertexAI,
+            "gemini-1.5-pro",
+            TokenPrices.Create(1.25m, 5m, null, null));
+        await pricingRepo.UpsertAsync(seeded);
+
+        using var handler = StubHttpMessageHandler.Throwing();
+        using var client = new HttpClient(handler);
+        var adapter = new VertexAIPricingAdapter(client, "http://test/vertex", pricingRepo);
+
+        var results = await adapter.FetchAsync();
+
+        results.Should().HaveCount(1);
+        var entry = results.Single();
+        entry.Model.Should().Be("gemini-1.5-pro");
+        entry.IsStale.Should().BeTrue();
+        entry.StaleSince.Should().NotBeNull();
+        entry.Prices.Input.Should().Be(1.25m);
+    }
+
+    [Fact]
     public async Task Fallback_returns_empty_when_no_persisted_values_exist()
     {
         var pricingRepo = new ModelPricingRepository(Db);

@@ -9,6 +9,10 @@ public class ProviderResolverTests
     [InlineData("OpenAI", Provider.OpenAI)]
     [InlineData("ANTHROPIC", Provider.Anthropic)]
     [InlineData("google", Provider.Google)]
+    [InlineData("azure-foundry", Provider.AzureFoundry)]
+    [InlineData("Azure-Foundry", Provider.AzureFoundry)]
+    [InlineData("vertex-ai", Provider.VertexAI)]
+    [InlineData("Vertex-AI", Provider.VertexAI)]
     public void TryParseProvider_parses_known_names_case_insensitively(string value, Provider expected)
     {
         ProviderResolver.TryParseProvider(value, out var provider).Should().BeTrue();
@@ -30,6 +34,8 @@ public class ProviderResolverTests
     {
         ProviderResolver.Key(Provider.OpenAI, "gpt-4o").Should().Be("openai:gpt-4o");
         ProviderResolver.Key(Provider.Anthropic, "claude-3-5-sonnet").Should().Be("anthropic:claude-3-5-sonnet");
+        ProviderResolver.Key(Provider.AzureFoundry, "gpt-4o").Should().Be("azure-foundry:gpt-4o");
+        ProviderResolver.Key(Provider.VertexAI, "gemini-1.5-pro").Should().Be("vertex-ai:gemini-1.5-pro");
     }
 
     [Fact]
@@ -38,6 +44,10 @@ public class ProviderResolverTests
         ProviderResolver.TryParseKey("openai:gpt-4o", out var provider, out var model).Should().BeTrue();
         provider.Should().Be(Provider.OpenAI);
         model.Should().Be("gpt-4o");
+
+        ProviderResolver.TryParseKey("azure-foundry:gpt-4o", out var provider2, out var model2).Should().BeTrue();
+        provider2.Should().Be(Provider.AzureFoundry);
+        model2.Should().Be("gpt-4o");
     }
 
     [Fact]
