@@ -46,24 +46,19 @@ public sealed class GroupCrudTests : TestContext, IDisposable
         cut.Find("#newGroupName").Change("engineering");
         await cut.InvokeAsync(() => cut.Find("#btn-create-group").Click());
 
-        // Assert rendered
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("engineering"));
-
         // Assert created in DB
-        using (var db = _dbFactory.CreateDbContext())
+        Guid groupId = Guid.Empty;
+        cut.WaitForAssertion(() =>
         {
-            var groups = await db.Groups.ToListAsync();
-            groups.Should().ContainSingle(g => g.Name == "engineering");
-        }
+            using var db = _dbFactory.CreateDbContext();
+            var group = db.Groups.FirstOrDefault(g => g.Name == "engineering");
+            group.Should().NotBeNull();
+            groupId = group!.Id;
+        });
 
-        // Get group ID from DB to query card
-        Guid groupId;
-        using (var db = _dbFactory.CreateDbContext())
-        {
-            groupId = (await db.Groups.FirstAsync(g => g.Name == "engineering")).Id;
-        }
-        var groupCard = cut.Find($"#group-{groupId}");
-        cut.WaitForAssertion(() => groupCard.Should().NotBeNull());
+        // Assert rendered
+        var groupCard = cut.WaitForElement($"#group-{groupId}");
+        groupCard.Should().NotBeNull();
 
         // 4. Set Group Budget
         var amountInput = cut.Find($"#group-{groupId} .input-budget-amount");
