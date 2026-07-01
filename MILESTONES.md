@@ -30,7 +30,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M17 | Admin app: groups/budgets/membership/overrides CRUD | §12.3 | M16, M4 | [x] | [x] |
 | M18 | Admin app: read-only views + pricing file upload | §12.3 | M17, M5 | [x] | [x] |
 | M19 | Contract/conformance tests + E2E local-dev verification | §13.4, §14.3 | M13, M14, M15, M18 | [x] | [x] |
-| M20 | Coding standard: one top-level type per `.cs` file + guard | §17 | M19 | [ ] | [ ] |
+| M20 | Coding standard: one top-level type per `.cs` file + guard | §17 | M19 | [x] | [x] |
 | M21 | Weekly budget period (multi-period budgeting) | §6.2.1, §6.2.2, §7, §9.4, §10.2 | M20 | [ ] | [ ] |
 | M22 | Additional providers (Azure AI Foundry, Vertex AI) | §6.2.3, §8.1, §8.2, §8.5 | M20 | [ ] | [ ] |
 | M23 | Pricing version history (insert-on-change) + usage references version | §8.7, §9.2, §9.4 | M20, M22 | [ ] | [ ] |
@@ -390,7 +390,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §17
 - **Depends on:** M19
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Rationale:** lands first so every subsequent milestone's code is authored
   one-type-per-file and is checked by the guard from the outset.
 - **Acceptance criteria:**
