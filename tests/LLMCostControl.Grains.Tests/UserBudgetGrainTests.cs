@@ -122,7 +122,7 @@ public class UserBudgetGrainTests : GrainTestBase
         await grain.CheckBudgetAsync();
         var callsAfterSecond = BudgetStore.CallCount;
 
-        callsAfterSecond.Should().Be(callsAfterFirst + 1,
+        callsAfterSecond.Should().Be(callsAfterFirst + 2,
             "after TTL expiry the grain should re-read from the store.");
     }
 
@@ -150,18 +150,18 @@ public class UserBudgetGrainTests : GrainTestBase
 
         // First call: January 2026 (the fixture's start time).
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("rollover@example.com");
-        await grain.CheckBudgetAsync();
+        var result1 = await grain.CheckBudgetAsync();
 
-        BudgetStore.PeriodsCalled.Should().Contain(p => p.Year == 2026 && p.Month == 1,
+        result1.Budgets.Should().Contain(b => b.Period == "Monthly" && b.PeriodKey == "2026-01",
             "first call should use the current period (Jan 2026).");
 
         // Advance the clock past the TTL into February 2026.
         TimeProvider.SetUtcNow(new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero));
 
         // Second call: the period should now be February 2026.
-        await grain.CheckBudgetAsync();
+        var result2 = await grain.CheckBudgetAsync();
 
-        BudgetStore.PeriodsCalled.Should().Contain(p => p.Year == 2026 && p.Month == 2,
+        result2.Budgets.Should().Contain(b => b.Period == "Monthly" && b.PeriodKey == "2026-02",
             "after time advance the grain should resolve the new period (Feb 2026).");
     }
 
@@ -238,8 +238,9 @@ public class UserBudgetGrainTests : GrainTestBase
         var evt = UsageEventStore.Events.Single();
         evt.EventId.Should().Be("req-audit-001");
         evt.CallerId.Value.Should().Be("audit@example.com");
-        evt.EffectiveGroupId.Should().Be(groupId);
-        evt.BudgetSource.Should().Be(BudgetSource.Group);
+        var accrual = evt.PeriodAccruals.Single();
+        accrual.EffectiveGroupId.Should().Be(groupId);
+        accrual.BudgetSource.Should().Be(BudgetSource.Group);
         evt.Model.Should().Be("gpt-4o");
         evt.TokensInput.Should().Be(1000);
         evt.TokensOutput.Should().Be(500);
@@ -250,8 +251,9 @@ public class UserBudgetGrainTests : GrainTestBase
         evt.UnitPrices.CacheRead.Should().Be(1.25m);
         evt.CostAmount.Should().Be(result.CostAmount);
         evt.CostCurrency.Should().Be("USD");
-        evt.RunningSpendAfter.Should().Be(result.RunningSpendAmount);
-        evt.Period.Should().Be(BudgetPeriod.FromDate(TimeProvider.GetUtcNow()));
+        accrual.RunningSpendAfter.Should().Be(result.RunningSpendAmount);
+        accrual.PeriodType.Should().Be(BudgetPeriodType.Monthly);
+        accrual.PeriodKey.Should().Be(BudgetPeriod.FromDate(TimeProvider.GetUtcNow()).Key);
     }
 
     [Fact]
@@ -500,7 +502,7 @@ public class UserBudgetGrainTests : GrainTestBase
         grainContext.GrainId.Returns(grainId);
 
         // Mock budgetStore.ResolveAsync to return a valid override
-        budgetStore.ResolveAsync(Arg.Any<CallerId>(), Arg.Any<BudgetPeriod>())
+        budgetStore.ResolveAsync(Arg.Any<CallerId>(), Arg.Any<BudgetPeriodType>())
             .Returns(EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
 
         var request = new UsageCaptureRequest

@@ -52,13 +52,15 @@ public static class ObservabilityExtensions
     /// <param name="callerId">The caller identifier (will be anonymized to protect PII).</param>
     /// <param name="effectiveGroup">The effective group ID or "None".</param>
     /// <param name="budgetSource">The budget source (e.g. Group, UserOverride, None).</param>
-    public static void SetTelemetryTags(this Activity? activity, string callerId, string effectiveGroup, string budgetSource)
+    /// <param name="budgetPeriod">The binding budget period type or "None".</param>
+    public static void SetTelemetryTags(this Activity? activity, string callerId, string effectiveGroup, string budgetSource, string budgetPeriod)
     {
         if (activity is not null)
         {
             activity.SetTag("effective_group", effectiveGroup);
             activity.SetTag("budget_source", budgetSource);
             activity.SetTag("caller_id", AnonymizeCallerId(callerId));
+            activity.SetTag("budget_period", budgetPeriod);
         }
     }
     /// <summary>

@@ -11,10 +11,7 @@
     <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4">
         <div>
             <h1 class="h2 mb-1">Per-User Budget Overrides</h1>
-            <p class="text-muted mb-0">Set explicit user-level budgets that override group-level budgets for the current period: <strong>@_currentPeriod</strong></p>
-        </div>
-        <div>
-            <span class="badge bg-secondary p-2">Period: @_currentPeriod</span>
+            <p class="text-muted mb-0">Set explicit user-level budgets that override group-level budgets for configured period types.</p>
         </div>
     </div>
 
@@ -27,12 +24,12 @@
                 <div class="card-body">
                     <h2 class="h5 card-title mb-3">Set / Update User Budget Override</h2>
                     <form @onsubmit="SaveOverrideAsync" @onsubmit:preventDefault class="row g-3 align-items-end">
-                        <div class="col-md-5">
+                        <div class="col-md-4">
                             <label for="callerId" class="form-label small font-semibold">Caller Email ID</label>
                             <input type="text" id="callerId" class="form-control form-control-sm py-2" placeholder="user@example.com" @bind="_newCallerId" />
                         </div>
-                        <div class="col-md-3">
-                            <label for="amount" class="form-label small font-semibold">Monthly Budget Amount</label>
+                        <div class="col-md-2">
+                            <label for="amount" class="form-label small font-semibold">Budget Amount</label>
                             <input type="number" id="amount" class="form-control form-control-sm py-2" placeholder="0.00" @bind="_newAmount" min="0" step="0.01" />
                         </div>
                         <div class="col-md-2">
@@ -41,6 +38,13 @@
                                 <option value="USD">USD</option>
                                 <option value="EUR">EUR</option>
                                 <option value="GBP">GBP</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="periodType" class="form-label small font-semibold">Period Type</label>
+                            <select id="periodType" class="form-select form-select-sm py-2" @bind="_newPeriodType">
+                                <option value="@BudgetPeriodType.Monthly">Monthly</option>
+                                <option value="@BudgetPeriodType.Weekly">Weekly</option>
                             </select>
                         </div>
                         <div class="col-md-2">
@@ -64,7 +68,7 @@
     {
         <div class="text-center py-5 card border-0 shadow-sm">
             <div class="card-body">
-                <p class="text-muted mb-0">No per-user overrides found for this period.</p>
+                <p class="text-muted mb-0">No per-user overrides found.</p>
             </div>
         </div>
     }
@@ -76,8 +80,8 @@
                     <thead class="table-light">
                         <tr>
                             <th class="py-3 px-4">User (Caller ID)</th>
-                            <th class="py-3 px-4">Monthly Budget</th>
-                            <th class="py-3 px-4">Period</th>
+                            <th class="py-3 px-4">Budget</th>
+                            <th class="py-3 px-4">Period Type</th>
                             <th class="py-3 px-4">Set Timestamp</th>
                             <AuthorizeView Roles="CostTracker.Admin">
                                 <Authorized>
@@ -89,16 +93,18 @@
                     <tbody>
                         @foreach (var ov in _overrides)
                         {
-                            <tr id="override-@ov.CallerId.Value.Replace("@", "-at-").Replace(".", "-dot-")">
+                            <tr id="override-@ov.CallerId.Value.Replace("@", "-at-").Replace(".", "-dot-")-@ov.PeriodType.ToString().ToLowerInvariant()">
                                 <td class="px-4 font-mono font-medium small override-caller-email">@ov.CallerId.Value</td>
                                 <td class="px-4 font-bold text-primary override-amount-display">@ov.Amount.Amount.ToString("F2") <span class="text-muted font-normal small">@ov.Amount.Currency</span></td>
-                                <td class="px-4 small text-muted">@ov.Period</td>
+                                <td class="px-4 small text-muted">
+                                    <span class="badge @(ov.PeriodType == BudgetPeriodType.Monthly ? "bg-info" : "bg-warning")">@ov.PeriodType</span>
+                                </td>
                                 <td class="px-4 small text-muted">@ov.SetAt.ToString("g")</td>
                                 <AuthorizeView Roles="CostTracker.Admin">
                                     <Authorized>
                                         <td class="px-4 text-end">
                                             <button class="btn btn-sm btn-outline-primary me-2 btn-edit-override" @onclick="() => PopulateForEdit(ov)">Edit</button>
-                                            <button class="btn btn-sm btn-outline-danger btn-clear-override" @onclick="() => DeleteOverrideAsync(ov.CallerId.Value)">Clear</button>
+                                            <button class="btn btn-sm btn-outline-danger btn-clear-override" @onclick="() => DeleteOverrideAsync(ov.CallerId.Value, ov.PeriodType)">Clear</button>
                                         </td>
                                     </Authorized>
                                 </AuthorizeView>
@@ -112,21 +118,21 @@
 </div>
 
 @code {
-    [CascadingParameter]
-    private Task<AuthenticationState> AuthStateTask { get; set; } = default!;
-
     private List<UserBudgetOverride>? _overrides;
+    private string? _globalErrorMessage;
+    private string? _globalSuccessMessage;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthStateTask { get; set; } = null!;
+
     private string _newCallerId = string.Empty;
     private decimal? _newAmount;
     private string _newCurrency = "USD";
-    private string? _globalErrorMessage;
-    private string? _globalSuccessMessage;
-    private BudgetPeriod _currentPeriod;
+    private BudgetPeriodType _newPeriodType = BudgetPeriodType.Monthly;
     private bool _isAdmin;
 
     protected override async Task OnInitializedAsync()
     {
-        _currentPeriod = BudgetPeriod.Current();
         var authState = await AuthStateTask;
         _isAdmin = authState.User.IsInRole("CostTracker.Admin");
 
@@ -139,7 +145,13 @@
         {
             await using var context = await DbFactory.CreateDbContextAsync();
             var repo = new UserBudgetOverrideRepository(context);
-            _overrides = await repo.GetForPeriodAsync(_currentPeriod);
+            var monthlyList = await repo.GetForPeriodTypeAsync(BudgetPeriodType.Monthly);
+            var weeklyList = await repo.GetForPeriodTypeAsync(BudgetPeriodType.Weekly);
+            
+            _overrides = monthlyList.Concat(weeklyList)
+                .OrderBy(o => o.CallerId.Value)
+                .ThenBy(o => o.PeriodType)
+                .ToList();
         }
         catch (Exception ex)
         {
@@ -170,13 +182,13 @@
             await using var context = await DbFactory.CreateDbContextAsync();
             var repo = new UserBudgetOverrideRepository(context);
 
-            var overrideEntity = UserBudgetOverride.Create(callerId, money, _currentPeriod);
+            var overrideEntity = UserBudgetOverride.Create(callerId, money, _newPeriodType);
             await repo.UpsertAsync(overrideEntity);
 
             _newCallerId = string.Empty;
             _newAmount = null;
             _globalErrorMessage = null;
-            _globalSuccessMessage = $"Budget override for user '{callerId.Value}' set to {money.Amount:F2} {money.Currency} successfully.";
+            _globalSuccessMessage = $"Budget override for user '{callerId.Value}' ({_newPeriodType}) set to {money.Amount:F2} {money.Currency} successfully.";
 
             await LoadDataAsync();
         }
@@ -191,9 +203,10 @@
         _newCallerId = ov.CallerId.Value;
         _newAmount = ov.Amount.Amount;
         _newCurrency = ov.Amount.Currency;
+        _newPeriodType = ov.PeriodType;
     }
 
-    private async Task DeleteOverrideAsync(string email)
+    private async Task DeleteOverrideAsync(string email, BudgetPeriodType periodType)
     {
         if (!_isAdmin) return;
         try
@@ -202,8 +215,8 @@
             await using var context = await DbFactory.CreateDbContextAsync();
             var repo = new UserBudgetOverrideRepository(context);
 
-            await repo.DeleteAsync(callerId, _currentPeriod);
-            _globalSuccessMessage = $"Budget override for user '{email}' cleared successfully.";
+            await repo.DeleteAsync(callerId, periodType);
+            _globalSuccessMessage = $"Budget override for user '{email}' ({periodType}) cleared successfully.";
             _globalErrorMessage = null;
 
             await LoadDataAsync();

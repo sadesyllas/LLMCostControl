@@ -31,6 +31,9 @@ public class CostTrackerDbContext : DbContext
     /// <summary>Append-only usage events (audit ledger).</summary>
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
 
+    /// <summary>Accrual details per period for usage events.</summary>
+    public DbSet<UsageEventPeriodAccrual> UsageEventPeriodAccruals => Set<UsageEventPeriodAccrual>();
+
     /// <summary>
     /// Creates a <see cref="CostTrackerDbContext"/> with the given options.
     /// </summary>
@@ -51,6 +54,7 @@ public class CostTrackerDbContext : DbContext
         ConfigureUserBudgetOverrides(modelBuilder);
         ConfigureModelPricing(modelBuilder);
         ConfigureUsageEvents(modelBuilder);
+        ConfigureUsageEventPeriodAccruals(modelBuilder);
 
     }
 
@@ -95,12 +99,12 @@ public class CostTrackerDbContext : DbContext
                 m.Property(p => p.Amount).HasColumnName("amount").HasPrecision(18, 6);
                 m.Property(p => p.Currency).HasColumnName("currency").IsRequired().HasMaxLength(3);
             });
-            e.Property(x => x.Period)
-                .HasConversion<BudgetPeriodConverter>()
-                .HasColumnName("period")
-                .HasMaxLength(7);
+            e.Property(x => x.PeriodType)
+                .HasConversion<string>()
+                .HasColumnName("period_type")
+                .HasMaxLength(20);
             e.Property(x => x.SetAt).IsRequired();
-            e.HasIndex(x => new { x.GroupId, x.Period }).IsUnique();
+            e.HasIndex(x => new { x.GroupId, x.PeriodType }).IsUnique();
         });
     }
 
@@ -120,12 +124,12 @@ public class CostTrackerDbContext : DbContext
                 m.Property(p => p.Amount).HasColumnName("amount").HasPrecision(18, 6);
                 m.Property(p => p.Currency).HasColumnName("currency").IsRequired().HasMaxLength(3);
             });
-            e.Property(x => x.Period)
-                .HasConversion<BudgetPeriodConverter>()
-                .HasColumnName("period")
-                .HasMaxLength(7);
+            e.Property(x => x.PeriodType)
+                .HasConversion<string>()
+                .HasColumnName("period_type")
+                .HasMaxLength(20);
             e.Property(x => x.SetAt).IsRequired();
-            e.HasIndex(x => new { x.CallerId, x.Period }).IsUnique();
+            e.HasIndex(x => new { x.CallerId, x.PeriodType }).IsUnique();
         });
     }
 
@@ -164,8 +168,6 @@ public class CostTrackerDbContext : DbContext
                 .HasColumnName("caller_id")
                 .IsRequired()
                 .HasMaxLength(320);
-            e.Property(x => x.EffectiveGroupId).HasColumnName("effective_group_id");
-            e.Property(x => x.BudgetSource).HasConversion<string>().IsRequired().HasMaxLength(20);
             e.Property(x => x.Model).IsRequired().HasMaxLength(100);
             e.Property(x => x.Provider).HasConversion<string>().IsRequired().HasMaxLength(20).HasColumnName("provider");
             e.Property(x => x.TokensInput).HasColumnName("tokens_input");
@@ -181,14 +183,59 @@ public class CostTrackerDbContext : DbContext
             });
             e.Property(x => x.CostAmount).HasColumnName("cost_amount").HasPrecision(18, 8);
             e.Property(x => x.CostCurrency).HasColumnName("cost_currency").IsRequired().HasMaxLength(3);
-            e.Property(x => x.RunningSpendAfter).HasColumnName("running_spend_after").HasPrecision(18, 8);
-            e.Property(x => x.Period)
-                .HasConversion<BudgetPeriodConverter>()
-                .HasColumnName("period")
-                .HasMaxLength(7);
             e.Property(x => x.CapturedAt).HasColumnName("captured_at").IsRequired();
-            e.HasIndex(x => new { x.CallerId, x.Period });
             e.HasIndex(x => x.CapturedAt);
+
+            e.HasMany(x => x.PeriodAccruals)
+                .WithOne()
+                .HasForeignKey(x => x.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureUsageEventPeriodAccruals(ModelBuilder mb)
+    {
+        mb.Entity<UsageEventPeriodAccrual>(e =>
+        {
+            e.ToTable("usage_event_period_accruals");
+            e.HasKey(x => x.Id);
+            
+            e.Property(x => x.EventId)
+                .HasColumnName("event_id")
+                .IsRequired()
+                .HasMaxLength(100);
+
+            e.Property(x => x.PeriodType)
+                .HasConversion<string>()
+                .HasColumnName("period_type")
+                .IsRequired()
+                .HasMaxLength(20);
+
+            e.Property(x => x.PeriodKey)
+                .HasColumnName("period_key")
+                .IsRequired()
+                .HasMaxLength(10);
+
+            e.Property(x => x.EffectiveGroupId)
+                .HasColumnName("effective_group_id");
+
+            e.Property(x => x.BudgetSource)
+                .HasConversion<string>()
+                .HasColumnName("budget_source")
+                .IsRequired()
+                .HasMaxLength(20);
+
+            e.ComplexProperty(x => x.EffectiveBudgetAmount, m =>
+            {
+                m.Property(p => p.Amount).HasColumnName("effective_budget_amount").HasPrecision(18, 6);
+                m.Property(p => p.Currency).HasColumnName("effective_budget_currency").IsRequired().HasMaxLength(3);
+            });
+
+            e.Property(x => x.RunningSpendAfter)
+                .HasColumnName("running_spend_after")
+                .HasPrecision(18, 6);
+
+            e.HasIndex(x => new { x.EventId, x.PeriodType }).IsUnique();
         });
     }
 

@@ -70,22 +70,32 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
         root.ContainsKey("callerId").Should().BeTrue();
         root["callerId"]!.GetValue<string>().Should().Be("contract-check@example.com");
 
-        root.ContainsKey("effectiveBudget").Should().BeTrue();
-        var budgetNode = root["effectiveBudget"]?.AsObject();
+        root.ContainsKey("budgets").Should().BeTrue();
+        var budgetsArray = root["budgets"]?.AsArray();
+        budgetsArray.Should().NotBeNull();
+        budgetsArray.Should().NotBeEmpty();
+
+        var monthly = budgetsArray!.Select(x => x!.AsObject()).First(x => x["period"]!.GetValue<string>() == "Monthly");
+        monthly.ContainsKey("period").Should().BeTrue();
+        monthly.ContainsKey("periodKey").Should().BeTrue();
+        monthly.ContainsKey("budgetSource").Should().BeTrue();
+        monthly.ContainsKey("effectiveBudget").Should().BeTrue();
+        
+        var budgetNode = monthly["effectiveBudget"]?.AsObject();
         budgetNode.Should().NotBeNull();
         budgetNode!.ContainsKey("amount").Should().BeTrue();
         budgetNode["amount"]!.GetValue<decimal>().Should().Be(100m);
         budgetNode.ContainsKey("currency").Should().BeTrue();
         budgetNode["currency"]!.GetValue<string>().Should().Be("USD");
 
-        root.ContainsKey("runningSpend").Should().BeTrue();
-        var spendNode = root["runningSpend"]?.AsObject();
+        monthly.ContainsKey("runningSpend").Should().BeTrue();
+        var spendNode = monthly["runningSpend"]?.AsObject();
         spendNode.Should().NotBeNull();
         spendNode!.ContainsKey("amount").Should().BeTrue();
         spendNode.ContainsKey("currency").Should().BeTrue();
 
-        root.ContainsKey("remaining").Should().BeTrue();
-        var remainingNode = root["remaining"]?.AsObject();
+        monthly.ContainsKey("remaining").Should().BeTrue();
+        var remainingNode = monthly["remaining"]?.AsObject();
         remainingNode.Should().NotBeNull();
         remainingNode!.ContainsKey("amount").Should().BeTrue();
         remainingNode["amount"]!.GetValue<decimal>().Should().Be(100m);
@@ -137,14 +147,23 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
         costNode.ContainsKey("currency").Should().BeTrue();
         costNode["currency"]!.GetValue<string>().Should().Be("USD");
 
-        root.ContainsKey("runningSpend").Should().BeTrue();
-        var spendNode = root["runningSpend"]?.AsObject();
+        root.ContainsKey("budgets").Should().BeTrue();
+        var budgetsArray = root["budgets"]?.AsArray();
+        budgetsArray.Should().NotBeNull();
+        budgetsArray.Should().NotBeEmpty();
+
+        var monthly = budgetsArray!.Select(x => x!.AsObject()).First(x => x["period"]!.GetValue<string>() == "Monthly");
+        monthly.ContainsKey("period").Should().BeTrue();
+        monthly.ContainsKey("periodKey").Should().BeTrue();
+
+        monthly.ContainsKey("runningSpend").Should().BeTrue();
+        var spendNode = monthly["runningSpend"]?.AsObject();
         spendNode.Should().NotBeNull();
         spendNode!.ContainsKey("amount").Should().BeTrue();
         spendNode["amount"]!.GetValue<decimal>().Should().Be(0.0075m);
 
-        root.ContainsKey("remaining").Should().BeTrue();
-        var remainingNode = root["remaining"]?.AsObject();
+        monthly.ContainsKey("remaining").Should().BeTrue();
+        var remainingNode = monthly["remaining"]?.AsObject();
         remainingNode.Should().NotBeNull();
         remainingNode!.ContainsKey("amount").Should().BeTrue();
         remainingNode["amount"]!.GetValue<decimal>().Should().Be(100m - 0.0075m);

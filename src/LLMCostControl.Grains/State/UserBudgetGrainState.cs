@@ -28,4 +28,20 @@ public sealed class UserBudgetGrainState
     /// <summary>The currency of the running spend (3-letter ISO code).</summary>
     [Id(3)]
     public string RunningSpendCurrency { get; set; } = "USD";
+
+    /// <summary>The active key for the monthly period (e.g. 2026-06).</summary>
+    [Id(4)]
+    public string? MonthlyPeriodKey { get; set; }
+
+    /// <summary>The running spend for the monthly period.</summary>
+    [Id(5)]
+    public decimal MonthlyRunningSpend { get; set; }
+
+    /// <summary>The active key for the weekly period (e.g. 2026-W26).</summary>
+    [Id(6)]
+    public string? WeeklyPeriodKey { get; set; }
+
+    /// <summary>The running spend for the weekly period.</summary>
+    [Id(7)]
+    public decimal WeeklyRunningSpend { get; set; }
 }

@@ -133,29 +133,36 @@ app.MapPost("/api/budget/check", async (
     var grain = grainFactory.GetGrain<IUserBudgetGrain>(request.CallerId);
     var result = await grain.CheckBudgetAsync();
 
-    var budgetSourceStr = result.BudgetSource.ToString();
-    var effectiveGroupStr = result.EffectiveGroupId?.ToString() ?? "None";
+    var budgetSourceStr = result.BindingBudgetSource ?? "None";
+    var effectiveGroupStr = result.BindingEffectiveGroupId?.ToString() ?? "None";
+    var budgetPeriodStr = result.BindingPeriod ?? "None";
 
-    Activity.Current.SetTelemetryTags(request.CallerId, effectiveGroupStr, budgetSourceStr);
+    Activity.Current.SetTelemetryTags(request.CallerId, effectiveGroupStr, budgetSourceStr, budgetPeriodStr);
 
-    trackerMetrics.RecordBudgetCheck(request.CallerId, result.Allowed ? "allowed" : "denied", effectiveGroupStr, budgetSourceStr);
+    trackerMetrics.RecordBudgetCheck(request.CallerId, result.Allowed ? "allowed" : "denied", effectiveGroupStr, budgetSourceStr, budgetPeriodStr);
 
     using (Serilog.Context.LogContext.PushProperty("effective_group", effectiveGroupStr))
     using (Serilog.Context.LogContext.PushProperty("budget_source", budgetSourceStr))
+    using (Serilog.Context.LogContext.PushProperty("budget_period", budgetPeriodStr))
     {
-        app.Logger.LogInformation("Budget check for {CallerId}: allowed={Allowed}, source={Source}, group={Group}",
-            ObservabilityExtensions.AnonymizeCallerId(request.CallerId), result.Allowed, budgetSourceStr, effectiveGroupStr);
+        app.Logger.LogInformation("Budget check for {CallerId}: allowed={Allowed}, source={Source}, group={Group}, period={Period}",
+            ObservabilityExtensions.AnonymizeCallerId(request.CallerId), result.Allowed, budgetSourceStr, effectiveGroupStr, budgetPeriodStr);
     }
 
     var response = new BudgetCheckResponse
     {
         Allowed = result.Allowed,
         CallerId = result.CallerId,
-        EffectiveBudget = result.EffectiveBudgetAmount is null
-            ? null
-            : new MoneyDto { Amount = result.EffectiveBudgetAmount.Value, Currency = result.EffectiveBudgetCurrency ?? "USD" },
-        RunningSpend = new MoneyDto { Amount = result.RunningSpendAmount, Currency = result.RunningSpendCurrency },
-        Remaining = new MoneyDto { Amount = result.RemainingAmount, Currency = result.RemainingCurrency },
+        Budgets = result.Budgets.Select(b => new BudgetCheckResponseEntry
+        {
+            Period = b.Period,
+            PeriodKey = b.PeriodKey,
+            BudgetSource = b.BudgetSource.ToString(),
+            EffectiveGroupId = b.EffectiveGroupId,
+            EffectiveBudget = new MoneyDto { Amount = b.EffectiveBudgetAmount, Currency = b.BudgetCurrency },
+            RunningSpend = new MoneyDto { Amount = b.RunningSpendAmount, Currency = b.BudgetCurrency },
+            Remaining = new MoneyDto { Amount = b.RemainingAmount, Currency = b.BudgetCurrency }
+        }).ToList()
     };
 
     return Results.Ok(response);
@@ -197,10 +204,11 @@ app.MapPost("/api/usage/capture", async (
             RequestId = request.RequestId,
         });
 
-        var budgetSourceStr = result.BudgetSource.ToString();
-        var effectiveGroupStr = result.EffectiveGroupId?.ToString() ?? "None";
+        var budgetSourceStr = result.BindingBudgetSource ?? "None";
+        var effectiveGroupStr = result.BindingEffectiveGroupId?.ToString() ?? "None";
+        var budgetPeriodStr = result.BindingPeriod ?? "None";
 
-        Activity.Current.SetTelemetryTags(request.CallerId, effectiveGroupStr, budgetSourceStr);
+        Activity.Current.SetTelemetryTags(request.CallerId, effectiveGroupStr, budgetSourceStr, budgetPeriodStr);
 
         trackerMetrics.RecordUsageCapture(
             request.CallerId,
@@ -213,28 +221,35 @@ app.MapPost("/api/usage/capture", async (
             request.Tokens.CacheRead,
             request.Tokens.CacheWrite,
             effectiveGroupStr,
-            budgetSourceStr);
+            budgetSourceStr,
+            budgetPeriodStr);
 
         using (Serilog.Context.LogContext.PushProperty("effective_group", effectiveGroupStr))
         using (Serilog.Context.LogContext.PushProperty("budget_source", budgetSourceStr))
+        using (Serilog.Context.LogContext.PushProperty("budget_period", budgetPeriodStr))
         {
-            app.Logger.LogInformation("Usage captured for {CallerId}: model={Model}, cost={Cost} {Currency}, source={Source}, group={Group}",
-                ObservabilityExtensions.AnonymizeCallerId(request.CallerId), request.Model, result.CostAmount, result.CostCurrency, budgetSourceStr, effectiveGroupStr);
+            app.Logger.LogInformation("Usage captured for {CallerId}: model={Model}, cost={Cost} {Currency}, source={Source}, group={Group}, period={Period}",
+                ObservabilityExtensions.AnonymizeCallerId(request.CallerId), request.Model, result.CostAmount, result.CostCurrency, budgetSourceStr, effectiveGroupStr, budgetPeriodStr);
         }
 
         var response = new UsageCaptureResponse
         {
             CallerId = result.CallerId,
             Cost = new MoneyDto { Amount = result.CostAmount, Currency = result.CostCurrency },
-            RunningSpend = new MoneyDto { Amount = result.RunningSpendAmount, Currency = result.RunningSpendCurrency },
-            Remaining = new MoneyDto { Amount = result.RemainingAmount, Currency = result.RemainingCurrency },
+            Budgets = result.Budgets.Select(b => new UsageCaptureResponseEntry
+            {
+                Period = b.Period,
+                PeriodKey = b.PeriodKey,
+                RunningSpend = new MoneyDto { Amount = b.RunningSpendAmount, Currency = result.CostCurrency },
+                Remaining = new MoneyDto { Amount = b.RemainingAmount, Currency = result.CostCurrency }
+            }).ToList()
         };
 
         return Results.Ok(response);
     }
     catch (UnknownModelException ex)
     {
-        Activity.Current.SetTelemetryTags(request.CallerId, "None", "None");
+        Activity.Current.SetTelemetryTags(request.CallerId, "None", "None", "None");
 
         trackerMetrics.RecordUsageCapture(
             request.CallerId,
@@ -246,6 +261,7 @@ app.MapPost("/api/usage/capture", async (
             request.Tokens.Output,
             request.Tokens.CacheRead,
             request.Tokens.CacheWrite,
+            "None",
             "None",
             "None");
 

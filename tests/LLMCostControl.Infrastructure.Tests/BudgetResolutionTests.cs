@@ -13,7 +13,7 @@ public class BudgetResolutionTests : RepositoryTestBase
         var caller = CallerId.From("nobody@example.com");
         var period = new BudgetPeriod(2026, 6);
 
-        var result = await repo.ResolveAsync(caller, period);
+        var result = await repo.ResolveAsync(caller, period.PeriodType);
 
         result.Source.Should().Be(BudgetSource.None);
         result.HasBudget.Should().BeFalse();
@@ -30,14 +30,14 @@ public class BudgetResolutionTests : RepositoryTestBase
         var membership = GroupMembership.Create(group.Id, caller);
         await new GroupMembershipRepository(Db).AddAsync(membership);
 
-        var groupBudget = GroupBudget.Create(group.Id, new Money(50m, "USD"), period);
+        var groupBudget = GroupBudget.Create(group.Id, new Money(50m, "USD"), period.PeriodType);
         await new GroupBudgetRepository(Db).UpsertAsync(groupBudget);
 
-        var overrideEntity = UserBudgetOverride.Create(caller, new Money(100m, "USD"), period);
+        var overrideEntity = UserBudgetOverride.Create(caller, new Money(100m, "USD"), period.PeriodType);
         await new UserBudgetOverrideRepository(Db).UpsertAsync(overrideEntity);
 
         var repo = new BudgetResolutionRepository(Db);
-        var result = await repo.ResolveAsync(caller, period);
+        var result = await repo.ResolveAsync(caller, period.PeriodType);
 
         result.Source.Should().Be(BudgetSource.UserOverride);
         result.Amount.Should().Be(new Money(100m, "USD"));
@@ -61,11 +61,11 @@ public class BudgetResolutionTests : RepositoryTestBase
         await membershipRepo.AddAsync(GroupMembership.Create(bigGroup.Id, caller));
 
         var budgetRepo = new GroupBudgetRepository(Db);
-        await budgetRepo.UpsertAsync(GroupBudget.Create(smallGroup.Id, new Money(30m, "USD"), period));
-        await budgetRepo.UpsertAsync(GroupBudget.Create(bigGroup.Id, new Money(75m, "USD"), period));
+        await budgetRepo.UpsertAsync(GroupBudget.Create(smallGroup.Id, new Money(30m, "USD"), period.PeriodType));
+        await budgetRepo.UpsertAsync(GroupBudget.Create(bigGroup.Id, new Money(75m, "USD"), period.PeriodType));
 
         var repo = new BudgetResolutionRepository(Db);
-        var result = await repo.ResolveAsync(caller, period);
+        var result = await repo.ResolveAsync(caller, period.PeriodType);
 
         result.Source.Should().Be(BudgetSource.Group);
         result.Amount.Should().Be(new Money(75m, "USD"));
@@ -82,7 +82,7 @@ public class BudgetResolutionTests : RepositoryTestBase
         await new GroupMembershipRepository(Db).AddAsync(GroupMembership.Create(group.Id, caller));
 
         var repo = new BudgetResolutionRepository(Db);
-        var result = await repo.ResolveAsync(caller, period);
+        var result = await repo.ResolveAsync(caller, period.PeriodType);
 
         result.Source.Should().Be(BudgetSource.None);
         result.HasBudget.Should().BeFalse();

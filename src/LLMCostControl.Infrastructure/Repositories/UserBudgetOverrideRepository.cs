@@ -17,21 +17,21 @@ public class UserBudgetOverrideRepository
     public UserBudgetOverrideRepository(CostTrackerDbContext db) => _db = db;
 
     /// <summary>
-    /// Returns the override for a caller and period, or null.
+    /// Returns the override for a caller and period type, or null.
     /// </summary>
     public Task<UserBudgetOverride?> GetAsync(
         CallerId callerId,
-        BudgetPeriod period,
+        BudgetPeriodType periodType,
         CancellationToken ct = default)
         => _db.UserBudgetOverrides
-            .FirstOrDefaultAsync(o => o.CallerId == callerId && o.Period == period, ct);
+            .FirstOrDefaultAsync(o => o.CallerId == callerId && o.PeriodType == periodType, ct);
 
     /// <summary>Adds or replaces a user override and saves.</summary>
     public async Task UpsertAsync(UserBudgetOverride overrideEntity, CancellationToken ct = default)
     {
         var existing = await _db.UserBudgetOverrides
             .FirstOrDefaultAsync(o => o.CallerId == overrideEntity.CallerId
-                                   && o.Period == overrideEntity.Period, ct);
+                                   && o.PeriodType == overrideEntity.PeriodType, ct);
 
         if (existing is not null)
         {
@@ -46,17 +46,17 @@ public class UserBudgetOverrideRepository
     }
 
     /// <summary>Removes a user override and saves.</summary>
-    public async Task DeleteAsync(CallerId callerId, BudgetPeriod period, CancellationToken ct = default)
+    public async Task DeleteAsync(CallerId callerId, BudgetPeriodType periodType, CancellationToken ct = default)
     {
         await _db.UserBudgetOverrides
-            .Where(o => o.CallerId == callerId && o.Period == period)
+            .Where(o => o.CallerId == callerId && o.PeriodType == periodType)
             .ExecuteDeleteAsync(ct);
     }
 
-    /// <summary>Returns all overrides for a specific period.</summary>
-    public Task<List<UserBudgetOverride>> GetForPeriodAsync(BudgetPeriod period, CancellationToken ct = default)
+    /// <summary>Returns all overrides for a specific period type.</summary>
+    public Task<List<UserBudgetOverride>> GetForPeriodTypeAsync(BudgetPeriodType periodType, CancellationToken ct = default)
         => _db.UserBudgetOverrides
-            .Where(o => o.Period == period)
+            .Where(o => o.PeriodType == periodType)
             .ToListAsync(ct);
 
     /// <summary>Returns distinct caller IDs across all overrides.</summary>

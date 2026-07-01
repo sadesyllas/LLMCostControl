@@ -50,7 +50,7 @@ public sealed class OverrideCrudTests : TestContext, IDisposable
         await cut.InvokeAsync(() => cut.Find("#btn-save-override").Click());
 
         // Assert rendered in table first (await async reload)
-        var tableRowId = "#override-user-at-example-dot-com";
+        var tableRowId = "#override-user-at-example-dot-com-monthly";
         cut.WaitForAssertion(() =>
         {
             var row = cut.Find(tableRowId);
@@ -99,7 +99,7 @@ public sealed class OverrideCrudTests : TestContext, IDisposable
         cut.WaitForAssertion(() =>
         {
             cut.FindAll(tableRowId).Should().BeEmpty();
-            cut.Markup.Should().Contain("No per-user overrides found for this period.");
+            cut.Markup.Should().Contain("No per-user overrides found.");
         });
 
         // Assert override removed from DB
@@ -119,7 +119,7 @@ public sealed class OverrideCrudTests : TestContext, IDisposable
         authContext.SetRoles("CostTracker.ReadOnly");
 
         // Seed an override in DB
-        var ov = UserBudgetOverride.Create(CallerId.From("user@example.com"), new Money(100m, "USD"), BudgetPeriod.Current());
+        var ov = UserBudgetOverride.Create(CallerId.From("user@example.com"), new Money(100m, "USD"), BudgetPeriodType.Monthly);
         using (var db = _dbFactory.CreateDbContext())
         {
             await db.UserBudgetOverrides.AddAsync(ov);
@@ -131,7 +131,7 @@ public sealed class OverrideCrudTests : TestContext, IDisposable
         cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
 
         // Assert
-        var tableRowId = "#override-user-at-example-dot-com";
+        var tableRowId = "#override-user-at-example-dot-com-monthly";
         cut.WaitForAssertion(() =>
         {
             cut.Find(tableRowId).Should().NotBeNull();

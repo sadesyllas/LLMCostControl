@@ -51,11 +51,22 @@ public class UsageEventRepositoryTests : RepositoryTestBase
     private static UsageEvent MakeUsageEvent(string id, string caller, int day = 15)
     {
         var capturedAt = new DateTimeOffset(2026, 6, day, 10, 0, 0, TimeSpan.Zero);
+        var groupId = Guid.NewGuid();
+        var accruals = new[]
+        {
+            UsageEventPeriodAccrual.Create(
+                eventId: id,
+                periodType: BudgetPeriodType.Monthly,
+                periodKey: "2026-06",
+                effectiveGroupId: groupId,
+                budgetSource: BudgetSource.Group,
+                effectiveBudgetAmount: new Money(500m, "USD"),
+                runningSpendAfter: 12.35m)
+        };
+
         return UsageEvent.Create(
             eventId: id,
             callerId: CallerId.From(caller),
-            effectiveGroupId: Guid.NewGuid(),
-            budgetSource: BudgetSource.Group,
             model: "gpt-4o",
             provider: Provider.OpenAI,
             tokensInput: 1000,
@@ -65,8 +76,7 @@ public class UsageEventRepositoryTests : RepositoryTestBase
             unitPrices: TokenPrices.Create(2.5m, 10m, 1.25m),
             costAmount: 0.0125m,
             costCurrency: "USD",
-            runningSpendAfter: 12.35m,
-            period: new BudgetPeriod(2026, 6),
+            periodAccruals: accruals,
             capturedAt: capturedAt);
     }
 }

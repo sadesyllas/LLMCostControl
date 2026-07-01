@@ -45,14 +45,15 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
     private readonly IPersistentState<UserBudgetGrainState> _storage;
 
     /// <summary>
-    /// In-activation cache of the effective budget, with the timestamp it was
-    /// loaded. Re-read from the DB when the TTL expires.
+    /// In-activation cache of the effective budgets.
     /// </summary>
-    private EffectiveBudget? _cachedBudget;
+    private EffectiveBudget? _cachedMonthlyBudget;
+    private EffectiveBudget? _cachedWeeklyBudget;
 
     private DateTimeOffset _budgetLoadedAt;
 
-    private BudgetPeriod? _cachedBudgetPeriod;
+    private string? _cachedMonthlyPeriodKey;
+    private string? _cachedWeeklyPeriodKey;
 
     /// <summary>
     /// Creates the grain with the given budget store, usage event store,
@@ -75,33 +76,26 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
     }
 
     /// <summary>
-    /// Checks whether the caller has remaining budget for a new request
-    /// (§6.2.1). Resolves the effective budget (with TTL cache), computes
-    /// remaining = effective budget − running spend, and returns
-    /// <c>Allowed = true</c> when the caller has budget and remaining &gt; 0,
-    /// or when <see cref="BudgetGrainOptions.AllowNonBudgetedUsers"/> is
-    /// <c>true</c> and the caller has no budget. Unbudgeted callers are
-    /// denied (fail-closed) by default.
+    /// Checks whether the caller has remaining budget for a new request (§6.2.1).
+    /// Resolves the effective budgets (with TTL cache), computes remaining for
+    /// each configured period type, and returns Allowed = true when the caller has budget and remaining &gt; 0
+    /// across all configured periods.
     /// </summary>
     public async Task<BudgetCheckResult> CheckBudgetAsync()
     {
-        await EnsurePeriodCurrentAsync();
-        var budget = await GetEffectiveBudgetAsync();
-        return BuildCheckResult(budget);
+        await EnsurePeriodsCurrentAsync();
+        var (monthly, weekly) = await GetEffectiveBudgetsAsync();
+        return BuildCheckResult(monthly, weekly);
     }
 
     /// <summary>
     /// Captures token usage: looks up pricing via <see cref="IPricingGrain"/>,
-    /// computes cost, accrues to running spend, and appends one
-    /// <see cref="UsageEvent"/> audit row (§6.2.2, §9.4). Idempotent via
-    /// <paramref name="request"/>.<see cref="UsageCaptureRequest.RequestId"/>
-    /// — a duplicate capture returns the original result without
-    /// re-accruing. Throws <see cref="UnknownModelException"/> when the model
-    /// is not in the pricing set.
+    /// computes cost, accrues to running spend for each configured period type,
+    /// and appends one <see cref="UsageEvent"/> audit row with child accruals (§6.2.2, §9.4).
     /// </summary>
     public async Task<UsageCaptureResult> CaptureUsageAsync(UsageCaptureRequest request)
     {
-        await EnsurePeriodCurrentAsync();
+        await EnsurePeriodsCurrentAsync();
 
         var eventId = string.IsNullOrWhiteSpace(request.RequestId)
             ? Guid.NewGuid().ToString()
@@ -118,9 +112,6 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             }
         }
 
-        // Resolve the provider (explicit on the request, else inferred from the
-        // model name via the config-driven map, §6.2.3) and look up pricing for
-        // the (provider, model) pair via its composite-keyed PricingGrain (§8.6).
         if (!_providerInference.TryResolve(request.Provider, request.Model, out var provider))
         {
             throw new UnknownModelException(request.Model);
@@ -134,7 +125,6 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             throw new UnknownModelException(request.Model);
         }
 
-        // Compute cost (prices are per 1M tokens).
         var cost = ComputeCost(
             request.TokensInput,
             request.TokensOutput,
@@ -144,37 +134,45 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
 
         var currency = pricing.Currency;
 
-        // Resolve effective budget.
-        var budget = await GetEffectiveBudgetAsync();
-
-        // Accrue to running spend.
-        var state = _storage.State;
+        var (monthly, weekly) = await GetEffectiveBudgetsAsync();
 
         // Enforce same currency as budget if budget is present
-        if (budget.HasBudget && !string.Equals(currency, budget.Amount!.Currency, StringComparison.OrdinalIgnoreCase))
+        if (monthly.HasBudget && !string.Equals(currency, monthly.Amount!.Currency, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                $"Pricing currency {currency} does not match budget currency {budget.Amount.Currency}.");
+                $"Pricing currency {currency} does not match budget currency {monthly.Amount.Currency}.");
+        }
+        if (weekly.HasBudget && !string.Equals(currency, weekly.Amount!.Currency, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Pricing currency {currency} does not match budget currency {weekly.Amount.Currency}.");
         }
 
-        // Use domain Money to enforce currency validation with existing running spend
+        var state = _storage.State;
+
+        // Enforce same currency as existing running spend
         var currentSpend = new Money(state.RunningSpendAmount, state.RunningSpendCurrency);
         var incomingCost = new Money(cost, currency);
 
-        Money newSpend;
-        if (currentSpend.IsZero)
+        if (!currentSpend.IsZero && !string.Equals(currency, state.RunningSpendCurrency, StringComparison.OrdinalIgnoreCase))
         {
-            newSpend = incomingCost;
+            throw new InvalidOperationException(
+                $"Cannot combine money in different currencies: Pricing currency {currency} does not match existing running spend currency {state.RunningSpendCurrency}.");
         }
-        else
-        {
-            newSpend = currentSpend + incomingCost; // Throws if currencies mismatch
-        }
+
+        // Accrue to monthly
+        var currentMonthlySpend = new Money(state.MonthlyRunningSpend, state.RunningSpendCurrency);
+        state.MonthlyRunningSpend = (currentMonthlySpend.IsZero ? incomingCost : currentMonthlySpend + incomingCost).Amount;
+
+        // Accrue to weekly
+        var currentWeeklySpend = new Money(state.WeeklyRunningSpend, state.RunningSpendCurrency);
+        state.WeeklyRunningSpend = (currentWeeklySpend.IsZero ? incomingCost : currentWeeklySpend + incomingCost).Amount;
+
+        state.RunningSpendCurrency = currency;
+        state.RunningSpendAmount = state.MonthlyRunningSpend;
 
         try
         {
-            state.RunningSpendAmount = newSpend.Amount;
-            state.RunningSpendCurrency = newSpend.Currency;
             await _storage.WriteStateAsync();
         }
         catch (Exception)
@@ -183,33 +181,54 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             throw;
         }
 
-        // Append the usage event audit row.
+        var accruals = new List<UsageEventPeriodAccrual>();
+
+        if (monthly.HasBudget)
+        {
+            accruals.Add(UsageEventPeriodAccrual.Create(
+                eventId: eventId,
+                periodType: BudgetPeriodType.Monthly,
+                periodKey: state.MonthlyPeriodKey ?? string.Empty,
+                effectiveGroupId: monthly.GroupId,
+                budgetSource: monthly.Source,
+                effectiveBudgetAmount: monthly.Amount!,
+                runningSpendAfter: state.MonthlyRunningSpend));
+        }
+
+        if (weekly.HasBudget)
+        {
+            accruals.Add(UsageEventPeriodAccrual.Create(
+                eventId: eventId,
+                periodType: BudgetPeriodType.Weekly,
+                periodKey: state.WeeklyPeriodKey ?? string.Empty,
+                effectiveGroupId: weekly.GroupId,
+                budgetSource: weekly.Source,
+                effectiveBudgetAmount: weekly.Amount!,
+                runningSpendAfter: state.WeeklyRunningSpend));
+        }
+
         var usageEvent = UsageEvent.Create(
-            eventId,
-            CallerId.From(this.GetPrimaryKeyString()),
-            budget.GroupId,
-            budget.Source,
-            request.Model,
-            provider,
-            request.TokensInput,
-            request.TokensOutput,
-            request.TokensCacheRead,
-            request.TokensCacheWrite,
-            TokenPrices.Create(pricing.Input, pricing.Output, pricing.CacheRead, pricing.CacheWrite),
-            cost,
-            currency,
-            state.RunningSpendAmount,
-            CurrentPeriod(),
-            _timeProvider.GetUtcNow());
+            eventId: eventId,
+            callerId: CallerId.From(this.GetPrimaryKeyString()),
+            model: request.Model,
+            provider: provider,
+            tokensInput: request.TokensInput,
+            tokensOutput: request.TokensOutput,
+            tokensCacheRead: request.TokensCacheRead,
+            tokensCacheWrite: request.TokensCacheWrite,
+            unitPrices: TokenPrices.Create(pricing.Input, pricing.Output, pricing.CacheRead, pricing.CacheWrite),
+            costAmount: cost,
+            costCurrency: currency,
+            periodAccruals: accruals,
+            capturedAt: _timeProvider.GetUtcNow());
 
         await _usageEventStore.AppendAsync(usageEvent);
 
-        return BuildCaptureResult(budget, cost, state.RunningSpendAmount, currency);
+        return BuildCaptureResult(monthly, weekly, cost, currency);
     }
 
     /// <summary>
-    /// Computes the total cost from token counts and unit prices (per 1M
-    /// tokens). Null cache prices are treated as zero.
+    /// Computes the total cost from token counts and unit prices (per 1M tokens).
     /// </summary>
     private static decimal ComputeCost(
         long tokensInput,
@@ -227,129 +246,258 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
     }
 
     /// <summary>
-    /// Ensures the grain state's period matches the current budget period.
-    /// On rollover (or first activation), resets the running spend to zero
-    /// and persists the new period.
+    /// Ensures all grain state periods match the current budget periods.
+    /// Resets running spend on rollover.
     /// </summary>
-    private async Task EnsurePeriodCurrentAsync()
+    private async Task EnsurePeriodsCurrentAsync()
     {
         var state = _storage.State;
-        var current = CurrentPeriod();
+        var now = _timeProvider.GetUtcNow();
+        var currentMonthly = BudgetPeriod.FromDate(now, BudgetPeriodType.Monthly);
+        var currentWeekly = BudgetPeriod.FromDate(now, BudgetPeriodType.Weekly);
 
-        if (state.PeriodYear != current.Year || state.PeriodMonth != current.Month)
+        bool changed = false;
+
+        // Migrate legacy monthly state
+        if (string.IsNullOrEmpty(state.MonthlyPeriodKey) && state.PeriodYear > 0 && state.PeriodMonth > 0)
         {
-            state.PeriodYear = current.Year;
-            state.PeriodMonth = current.Month;
-            state.RunningSpendAmount = 0m;
-            await _storage.WriteStateAsync();
+            state.MonthlyPeriodKey = $"{state.PeriodYear:D4}-{state.PeriodMonth:D2}";
+            state.MonthlyRunningSpend = state.RunningSpendAmount;
+            changed = true;
+        }
+
+        // Check Monthly rollover
+        if (state.MonthlyPeriodKey != currentMonthly.Key)
+        {
+            state.MonthlyPeriodKey = currentMonthly.Key;
+            state.MonthlyRunningSpend = 0m;
+            changed = true;
+        }
+
+        // Check Weekly rollover
+        if (state.WeeklyPeriodKey != currentWeekly.Key)
+        {
+            state.WeeklyPeriodKey = currentWeekly.Key;
+            state.WeeklyRunningSpend = 0m;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            state.PeriodYear = currentMonthly.Year;
+            state.PeriodMonth = currentMonthly.Month;
+            state.RunningSpendAmount = state.MonthlyRunningSpend;
+            try
+            {
+                await _storage.WriteStateAsync();
+            }
+            catch (Exception)
+            {
+                DeactivateOnIdle();
+                throw;
+            }
         }
     }
 
     /// <summary>
-    /// Returns the effective budget, using the in-activation TTL cache when
-    /// fresh, otherwise re-reading from the store.
+    /// Returns the effective budgets for all configured period types.
     /// </summary>
-    private async Task<EffectiveBudget> GetEffectiveBudgetAsync()
+    private async Task<(EffectiveBudget Monthly, EffectiveBudget Weekly)> GetEffectiveBudgetsAsync()
     {
         var now = _timeProvider.GetUtcNow();
-        var currentPeriod = CurrentPeriod();
+        var currentMonthly = BudgetPeriod.FromDate(now, BudgetPeriodType.Monthly);
+        var currentWeekly = BudgetPeriod.FromDate(now, BudgetPeriodType.Weekly);
 
-        if (_cachedBudget is not null && _cachedBudgetPeriod == currentPeriod && (now - _budgetLoadedAt) < _options.BudgetCacheTtl)
+        if (_cachedMonthlyBudget is not null && 
+            _cachedWeeklyBudget is not null && 
+            _cachedMonthlyPeriodKey == currentMonthly.Key &&
+            _cachedWeeklyPeriodKey == currentWeekly.Key &&
+            (now - _budgetLoadedAt) < _options.BudgetCacheTtl)
         {
-            return _cachedBudget;
+            return (_cachedMonthlyBudget, _cachedWeeklyBudget);
         }
 
         var callerId = CallerId.From(this.GetPrimaryKeyString());
-        _cachedBudget = await _budgetStore.ResolveAsync(callerId, currentPeriod);
-        _cachedBudgetPeriod = currentPeriod;
+        
+        _cachedMonthlyBudget = await _budgetStore.ResolveAsync(callerId, BudgetPeriodType.Monthly);
+        _cachedWeeklyBudget = await _budgetStore.ResolveAsync(callerId, BudgetPeriodType.Weekly);
+        
+        _cachedMonthlyPeriodKey = currentMonthly.Key;
+        _cachedWeeklyPeriodKey = currentWeekly.Key;
         _budgetLoadedAt = now;
-        return _cachedBudget;
+
+        return (_cachedMonthlyBudget, _cachedWeeklyBudget);
     }
 
-    /// <summary>The current budget period derived from the time provider.</summary>
-    private BudgetPeriod CurrentPeriod() =>
-        BudgetPeriod.FromDate(_timeProvider.GetUtcNow());
-
     /// <summary>
-    /// Builds a <see cref="BudgetCheckResult"/> from the effective budget and
-    /// current running spend.
+    /// Builds a <see cref="BudgetCheckResult"/> from effective budgets, resolving the binding period.
     /// </summary>
-    private BudgetCheckResult BuildCheckResult(EffectiveBudget budget)
+    private BudgetCheckResult BuildCheckResult(EffectiveBudget monthly, EffectiveBudget weekly)
     {
         var callerId = this.GetPrimaryKeyString();
-        var runningSpend = _storage.State.RunningSpendAmount;
-        var runningCurrency = _storage.State.RunningSpendCurrency;
+        var state = _storage.State;
+        var budgets = new List<BudgetPeriodCheckResult>();
+        bool allowed = true;
+        bool hasAnyBudget = false;
 
-        if (budget.HasBudget)
+        if (monthly.HasBudget)
         {
-            var budgetMoney = budget.Amount!;
-            var runningSpendMoney = new Money(runningSpend, runningCurrency);
+            hasAnyBudget = true;
+            var budgetMoney = monthly.Amount!;
+            var runningSpendMoney = new Money(state.MonthlyRunningSpend, state.RunningSpendCurrency);
+            if (runningSpendMoney.IsZero)
+            {
+                runningSpendMoney = Money.Zero(budgetMoney.Currency);
+            }
+            
+            var remainingMoney = budgetMoney - runningSpendMoney;
+            var remaining = remainingMoney.Amount;
+            if (remaining <= 0m)
+            {
+                allowed = false;
+            }
 
+            budgets.Add(new BudgetPeriodCheckResult
+            {
+                Period = "Monthly",
+                PeriodKey = state.MonthlyPeriodKey ?? string.Empty,
+                BudgetSource = monthly.Source,
+                EffectiveGroupId = monthly.GroupId,
+                EffectiveBudgetAmount = budgetMoney.Amount,
+                BudgetCurrency = budgetMoney.Currency,
+                RunningSpendAmount = runningSpendMoney.Amount,
+                RemainingAmount = remaining
+            });
+        }
+
+        if (weekly.HasBudget)
+        {
+            hasAnyBudget = true;
+            var budgetMoney = weekly.Amount!;
+            var runningSpendMoney = new Money(state.WeeklyRunningSpend, state.RunningSpendCurrency);
             if (runningSpendMoney.IsZero)
             {
                 runningSpendMoney = Money.Zero(budgetMoney.Currency);
             }
 
-            var remainingMoney = budgetMoney - runningSpendMoney; // Throws on mismatch
-
-            return new BudgetCheckResult
+            var remainingMoney = budgetMoney - runningSpendMoney;
+            var remaining = remainingMoney.Amount;
+            if (remaining <= 0m)
             {
-                Allowed = remainingMoney.Amount > 0m,
-                CallerId = callerId,
+                allowed = false;
+            }
+
+            budgets.Add(new BudgetPeriodCheckResult
+            {
+                Period = "Weekly",
+                PeriodKey = state.WeeklyPeriodKey ?? string.Empty,
+                BudgetSource = weekly.Source,
+                EffectiveGroupId = weekly.GroupId,
                 EffectiveBudgetAmount = budgetMoney.Amount,
-                EffectiveBudgetCurrency = budgetMoney.Currency,
+                BudgetCurrency = budgetMoney.Currency,
                 RunningSpendAmount = runningSpendMoney.Amount,
-                RunningSpendCurrency = runningSpendMoney.Currency,
-                RemainingAmount = remainingMoney.Amount,
-                RemainingCurrency = remainingMoney.Currency,
-                BudgetSource = budget.Source,
-                EffectiveGroupId = budget.GroupId,
-            };
+                RemainingAmount = remaining
+            });
+        }
+
+        if (!hasAnyBudget)
+        {
+            allowed = _options.AllowNonBudgetedUsers;
+        }
+
+        BudgetPeriodCheckResult? binding = null;
+        if (budgets.Count > 0)
+        {
+            if (!allowed)
+            {
+                binding = budgets.FirstOrDefault(b => b.RemainingAmount <= 0m) ?? budgets[0];
+            }
+            else
+            {
+                binding = budgets.OrderBy(b => b.RemainingAmount).First();
+            }
         }
 
         return new BudgetCheckResult
         {
-            Allowed = _options.AllowNonBudgetedUsers,
+            Allowed = allowed,
             CallerId = callerId,
-            EffectiveBudgetAmount = null,
-            EffectiveBudgetCurrency = null,
-            RunningSpendAmount = runningSpend,
-            RunningSpendCurrency = runningCurrency,
-            RemainingAmount = 0m,
-            RemainingCurrency = runningCurrency,
-            BudgetSource = BudgetSource.None,
-            EffectiveGroupId = null,
+            Budgets = budgets,
+            BindingPeriod = binding?.Period,
+            BindingPeriodKey = binding?.PeriodKey,
+            BindingBudgetSource = binding?.BudgetSource.ToString(),
+            BindingEffectiveGroupId = binding?.EffectiveGroupId
         };
     }
 
     /// <summary>
-    /// Builds a <see cref="UsageCaptureResult"/> from the effective budget,
-    /// cost, and updated running spend.
+    /// Builds a <see cref="UsageCaptureResult"/> from effective budgets.
     /// </summary>
     private UsageCaptureResult BuildCaptureResult(
-        EffectiveBudget budget,
+        EffectiveBudget monthly,
+        EffectiveBudget weekly,
         decimal cost,
-        decimal runningSpend,
         string currency)
     {
         var callerId = this.GetPrimaryKeyString();
+        var state = _storage.State;
+        var budgets = new List<BudgetPeriodCaptureResult>();
 
-        decimal remainingAmount;
-        string remainingCurrency;
-
-        if (budget.HasBudget)
+        if (monthly.HasBudget)
         {
-            var budgetMoney = budget.Amount!;
-            var runningSpendMoney = new Money(runningSpend, currency);
-            var remainingMoney = budgetMoney - runningSpendMoney; // Throws on mismatch
-            
-            remainingAmount = remainingMoney.Amount;
-            remainingCurrency = remainingMoney.Currency;
+            var budgetMoney = monthly.Amount!;
+            var runningSpendMoney = new Money(state.MonthlyRunningSpend, currency);
+            var remainingMoney = budgetMoney - runningSpendMoney;
+
+            budgets.Add(new BudgetPeriodCaptureResult
+            {
+                Period = "Monthly",
+                PeriodKey = state.MonthlyPeriodKey ?? string.Empty,
+                RunningSpendAmount = state.MonthlyRunningSpend,
+                RemainingAmount = remainingMoney.Amount
+            });
         }
-        else
+
+        if (weekly.HasBudget)
         {
-            remainingAmount = 0m;
-            remainingCurrency = currency;
+            var budgetMoney = weekly.Amount!;
+            var runningSpendMoney = new Money(state.WeeklyRunningSpend, currency);
+            var remainingMoney = budgetMoney - runningSpendMoney;
+
+            budgets.Add(new BudgetPeriodCaptureResult
+            {
+                Period = "Weekly",
+                PeriodKey = state.WeeklyPeriodKey ?? string.Empty,
+                RunningSpendAmount = state.WeeklyRunningSpend,
+                RemainingAmount = remainingMoney.Amount
+            });
+        }
+
+        string? bindingPeriod = null;
+        string? bindingPeriodKey = null;
+        string? bindingSource = null;
+        Guid? bindingGroupId = null;
+
+        if (budgets.Count > 0)
+        {
+            int bindingIdx = 0;
+            decimal minRemaining = budgets[0].RemainingAmount;
+            for (int i = 1; i < budgets.Count; i++)
+            {
+                if (budgets[i].RemainingAmount < minRemaining)
+                {
+                    minRemaining = budgets[i].RemainingAmount;
+                    bindingIdx = i;
+                }
+            }
+
+            var bindingBudget = budgets[bindingIdx];
+            bindingPeriod = bindingBudget.Period;
+            bindingPeriodKey = bindingBudget.PeriodKey;
+            
+            var effBudget = bindingPeriod == "Monthly" ? monthly : weekly;
+            bindingSource = effBudget.Source.ToString();
+            bindingGroupId = effBudget.GroupId;
         }
 
         return new UsageCaptureResult
@@ -357,32 +505,60 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             CallerId = callerId,
             CostAmount = cost,
             CostCurrency = currency,
-            RunningSpendAmount = runningSpend,
-            RunningSpendCurrency = currency,
-            RemainingAmount = remainingAmount,
-            RemainingCurrency = remainingCurrency,
-            BudgetSource = budget.Source,
-            EffectiveGroupId = budget.GroupId,
+            Budgets = budgets,
+            BindingPeriod = bindingPeriod,
+            BindingPeriodKey = bindingPeriodKey,
+            BindingBudgetSource = bindingSource,
+            BindingEffectiveGroupId = bindingGroupId
         };
     }
 
     /// <summary>
-    /// Builds a <see cref="UsageCaptureResult"/> from an existing
-    /// <see cref="UsageEvent"/> (idempotent duplicate return).
+    /// Builds a <see cref="UsageCaptureResult"/> from an existing UsageEvent.
     /// </summary>
     private UsageCaptureResult BuildCaptureResultFromEvent(UsageEvent evt)
     {
+        var budgets = new List<BudgetPeriodCaptureResult>();
+
+        foreach (var acc in evt.PeriodAccruals)
+        {
+            var remaining = acc.EffectiveBudgetAmount.Amount - acc.RunningSpendAfter;
+            budgets.Add(new BudgetPeriodCaptureResult
+            {
+                Period = acc.PeriodType.ToString(),
+                PeriodKey = acc.PeriodKey,
+                RunningSpendAmount = acc.RunningSpendAfter,
+                RemainingAmount = remaining
+            });
+        }
+
+        string? bindingPeriod = null;
+        string? bindingPeriodKey = null;
+        string? bindingSource = null;
+        Guid? bindingGroupId = null;
+
+        if (evt.PeriodAccruals.Count > 0)
+        {
+            var bindingAcc = evt.PeriodAccruals
+                .OrderBy(a => a.EffectiveBudgetAmount.Amount - a.RunningSpendAfter)
+                .First();
+
+            bindingPeriod = bindingAcc.PeriodType.ToString();
+            bindingPeriodKey = bindingAcc.PeriodKey;
+            bindingSource = bindingAcc.BudgetSource.ToString();
+            bindingGroupId = bindingAcc.EffectiveGroupId;
+        }
+
         return new UsageCaptureResult
         {
             CallerId = evt.CallerId.Value,
             CostAmount = evt.CostAmount,
             CostCurrency = evt.CostCurrency,
-            RunningSpendAmount = evt.RunningSpendAfter,
-            RunningSpendCurrency = evt.CostCurrency,
-            RemainingAmount = 0m,
-            RemainingCurrency = evt.CostCurrency,
-            BudgetSource = evt.BudgetSource,
-            EffectiveGroupId = evt.EffectiveGroupId,
+            Budgets = budgets,
+            BindingPeriod = bindingPeriod,
+            BindingPeriodKey = bindingPeriodKey,
+            BindingBudgetSource = bindingSource,
+            BindingEffectiveGroupId = bindingGroupId
         };
     }
 }

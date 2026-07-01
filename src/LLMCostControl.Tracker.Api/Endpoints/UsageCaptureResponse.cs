@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace LLMCostControl.Tracker.Api.Endpoints;
 
 /// <summary>
@@ -11,9 +13,6 @@ public sealed class UsageCaptureResponse
     /// <summary>The computed cost.</summary>
     public required MoneyDto Cost { get; init; }
 
-    /// <summary>The caller's running spend after this capture.</summary>
-    public required MoneyDto RunningSpend { get; init; }
-
-    /// <summary>The remaining budget after this capture.</summary>
-    public required MoneyDto Remaining { get; init; }
+    /// <summary>The budgets details for each configured period.</summary>
+    public List<UsageCaptureResponseEntry> Budgets { get; init; } = [];
 }

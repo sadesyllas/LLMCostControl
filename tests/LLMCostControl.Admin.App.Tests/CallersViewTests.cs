@@ -90,15 +90,25 @@ public sealed class CallersViewTests : TestContext, IDisposable
             await membershipRepo.AddAsync(GroupMembership.Create(bigGroup.Id, caller));
 
             var budgetRepo = new GroupBudgetRepository(db);
-            await budgetRepo.UpsertAsync(GroupBudget.Create(smallGroup.Id, new Money(30m, "USD"), period));
-            await budgetRepo.UpsertAsync(GroupBudget.Create(bigGroup.Id, new Money(75m, "USD"), period));
+            await budgetRepo.UpsertAsync(GroupBudget.Create(smallGroup.Id, new Money(30m, "USD"), BudgetPeriodType.Monthly));
+            await budgetRepo.UpsertAsync(GroupBudget.Create(bigGroup.Id, new Money(75m, "USD"), BudgetPeriodType.Monthly));
 
             var usageEventRepo = new UsageEventRepository(db);
+            var accruals = new[]
+            {
+                UsageEventPeriodAccrual.Create(
+                    eventId: "event-1",
+                    periodType: BudgetPeriodType.Monthly,
+                    periodKey: period.ToString(),
+                    effectiveGroupId: bigGroup.Id,
+                    budgetSource: BudgetSource.Group,
+                    effectiveBudgetAmount: new Money(75m, "USD"),
+                    runningSpendAfter: 0.0125m)
+            };
+
             var ev1 = UsageEvent.Create(
                 eventId: "event-1",
                 callerId: caller,
-                effectiveGroupId: bigGroup.Id,
-                budgetSource: BudgetSource.Group,
                 model: "gpt-4o",
                 provider: Provider.OpenAI,
                 tokensInput: 1000,
@@ -108,8 +118,7 @@ public sealed class CallersViewTests : TestContext, IDisposable
                 unitPrices: TokenPrices.Create(5m, 15m, 0m),
                 costAmount: 0.0125m,
                 costCurrency: "USD",
-                runningSpendAfter: 0.0125m,
-                period: period,
+                periodAccruals: accruals,
                 capturedAt: DateTimeOffset.UtcNow
             );
             await usageEventRepo.AppendAsync(ev1);

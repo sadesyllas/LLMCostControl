@@ -42,7 +42,8 @@ public class UsageEventRepository
         BudgetPeriod period,
         CancellationToken ct = default)
         => _db.UsageEvents
-            .Where(e => e.CallerId == callerId && e.Period == period)
+            .Include(e => e.PeriodAccruals)
+            .Where(e => e.CallerId == callerId && e.PeriodAccruals.Any(a => a.PeriodType == period.PeriodType && a.PeriodKey == period.Key))
             .OrderBy(e => e.CapturedAt)
             .ToListAsync(ct);
 
@@ -56,7 +57,9 @@ public class UsageEventRepository
     /// Returns the event with the given id, or null when not found.
     /// </summary>
     public Task<UsageEvent?> GetByIdAsync(string eventId, CancellationToken ct = default)
-        => _db.UsageEvents.FirstOrDefaultAsync(e => e.EventId == eventId, ct);
+        => _db.UsageEvents
+            .Include(e => e.PeriodAccruals)
+            .FirstOrDefaultAsync(e => e.EventId == eventId, ct);
 
     /// <summary>Returns distinct caller IDs across all usage events.</summary>
     public Task<List<CallerId>> GetDistinctCallersAsync(CancellationToken ct = default)

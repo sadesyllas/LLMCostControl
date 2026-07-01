@@ -53,7 +53,8 @@ public sealed class TrackerMetrics
     /// <param name="outcome">The outcome: "allowed" or "denied".</param>
     /// <param name="effectiveGroup">The name of the effective group.</param>
     /// <param name="budgetSource">The source of the budget.</param>
-    public void RecordBudgetCheck(string callerId, string outcome, string effectiveGroup, string budgetSource)
+    /// <param name="budgetPeriod">The binding budget period type.</param>
+    public void RecordBudgetCheck(string callerId, string outcome, string effectiveGroup, string budgetSource, string budgetPeriod)
     {
         var anonCallerId = ObservabilityExtensions.AnonymizeCallerId(callerId);
         _checkRequests.Add(1, new KeyValuePair<string, object?>[]
@@ -61,7 +62,8 @@ public sealed class TrackerMetrics
             new("caller_id", anonCallerId),
             new("outcome", outcome),
             new("effective_group", effectiveGroup),
-            new("budget_source", budgetSource)
+            new("budget_source", budgetSource),
+            new("budget_period", budgetPeriod)
         });
     }
 
@@ -79,6 +81,7 @@ public sealed class TrackerMetrics
     /// <param name="cacheWriteTokens">The cache write tokens count.</param>
     /// <param name="effectiveGroup">The name of the effective group.</param>
     /// <param name="budgetSource">The source of the budget.</param>
+    /// <param name="budgetPeriod">The binding budget period type.</param>
     public void RecordUsageCapture(
         string callerId,
         string outcome,
@@ -90,7 +93,8 @@ public sealed class TrackerMetrics
         long cacheReadTokens,
         long cacheWriteTokens,
         string effectiveGroup,
-        string budgetSource)
+        string budgetSource,
+        string budgetPeriod)
     {
         var anonCallerId = ObservabilityExtensions.AnonymizeCallerId(callerId);
         var tags = new KeyValuePair<string, object?>[]
@@ -99,7 +103,8 @@ public sealed class TrackerMetrics
             new("outcome", outcome),
             new("model", model),
             new("effective_group", effectiveGroup),
-            new("budget_source", budgetSource)
+            new("budget_source", budgetSource),
+            new("budget_period", budgetPeriod)
         };
 
         _captureRequests.Add(1, tags);
@@ -112,18 +117,19 @@ public sealed class TrackerMetrics
                 new("model", model),
                 new("currency", currency),
                 new("effective_group", effectiveGroup),
-                new("budget_source", budgetSource)
+                new("budget_source", budgetSource),
+                new("budget_period", budgetPeriod)
             };
             _captureCost.Add((double)cost, costTags);
 
-            RecordTokens(anonCallerId, model, "input", inputTokens, effectiveGroup, budgetSource);
-            RecordTokens(anonCallerId, model, "output", outputTokens, effectiveGroup, budgetSource);
-            RecordTokens(anonCallerId, model, "cache_read", cacheReadTokens, effectiveGroup, budgetSource);
-            RecordTokens(anonCallerId, model, "cache_write", cacheWriteTokens, effectiveGroup, budgetSource);
+            RecordTokens(anonCallerId, model, "input", inputTokens, effectiveGroup, budgetSource, budgetPeriod);
+            RecordTokens(anonCallerId, model, "output", outputTokens, effectiveGroup, budgetSource, budgetPeriod);
+            RecordTokens(anonCallerId, model, "cache_read", cacheReadTokens, effectiveGroup, budgetSource, budgetPeriod);
+            RecordTokens(anonCallerId, model, "cache_write", cacheWriteTokens, effectiveGroup, budgetSource, budgetPeriod);
         }
     }
 
-    private void RecordTokens(string anonCallerId, string model, string type, long count, string effectiveGroup, string budgetSource)
+    private void RecordTokens(string anonCallerId, string model, string type, long count, string effectiveGroup, string budgetSource, string budgetPeriod)
     {
         if (count <= 0) return;
 
@@ -133,7 +139,8 @@ public sealed class TrackerMetrics
             new("model", model),
             new("token_type", type),
             new("effective_group", effectiveGroup),
-            new("budget_source", budgetSource)
+            new("budget_source", budgetSource),
+            new("budget_period", budgetPeriod)
         });
     }
 }

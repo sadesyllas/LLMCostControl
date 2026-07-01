@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace LLMCostControl.Tracker.Api.Endpoints;
 
 /// <summary>
@@ -11,12 +13,6 @@ public sealed class BudgetCheckResponse
     /// <summary>The caller id.</summary>
     public string CallerId { get; init; } = string.Empty;
 
-    /// <summary>The effective budget, or null when no budget.</summary>
-    public MoneyDto? EffectiveBudget { get; init; }
-
-    /// <summary>The caller's current running spend.</summary>
-    public required MoneyDto RunningSpend { get; init; }
-
-    /// <summary>The remaining budget.</summary>
-    public required MoneyDto Remaining { get; init; }
+    /// <summary>The budgets check details for each configured period.</summary>
+    public List<BudgetCheckResponseEntry> Budgets { get; init; } = [];
 }

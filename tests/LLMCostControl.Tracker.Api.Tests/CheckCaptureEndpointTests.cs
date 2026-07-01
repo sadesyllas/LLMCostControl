@@ -62,9 +62,11 @@ public sealed class CheckCaptureEndpointTests : IClassFixture<TrackerApiFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<BudgetCheckResponse>();
         body!.Allowed.Should().BeTrue();
-        body.EffectiveBudget!.Amount.Should().Be(100m);
-        body.RunningSpend.Amount.Should().Be(0m);
-        body.Remaining.Amount.Should().Be(100m);
+        
+        var monthly = body.Budgets.First(b => b.Period == "Monthly");
+        monthly.EffectiveBudget!.Amount.Should().Be(100m);
+        monthly.RunningSpend.Amount.Should().Be(0m);
+        monthly.Remaining.Amount.Should().Be(100m);
     }
 
     [Fact]
@@ -78,7 +80,7 @@ public sealed class CheckCaptureEndpointTests : IClassFixture<TrackerApiFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<BudgetCheckResponse>();
         body!.Allowed.Should().BeFalse();
-        body.EffectiveBudget.Should().BeNull();
+        body.Budgets.Should().BeEmpty();
     }
 
     [Fact]
@@ -112,7 +114,9 @@ public sealed class CheckCaptureEndpointTests : IClassFixture<TrackerApiFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<UsageCaptureResponse>();
         body!.Cost.Amount.Should().BePositive();
-        body.RunningSpend.Amount.Should().Be(body.Cost.Amount);
+        
+        var monthly = body.Budgets.First(b => b.Period == "Monthly");
+        monthly.RunningSpend.Amount.Should().Be(body.Cost.Amount);
     }
 
     [Fact]
@@ -154,7 +158,9 @@ public sealed class CheckCaptureEndpointTests : IClassFixture<TrackerApiFactory>
         var second = await CreateClient().PostAsJsonAsync("/api/usage/capture", payload);
         var secondBody = await second.Content.ReadFromJsonAsync<UsageCaptureResponse>();
 
-        secondBody!.RunningSpend.Amount.Should().Be(firstBody!.RunningSpend.Amount,
+        var firstMonthly = firstBody!.Budgets.First(b => b.Period == "Monthly");
+        var secondMonthly = secondBody!.Budgets.First(b => b.Period == "Monthly");
+        secondMonthly.RunningSpend.Amount.Should().Be(firstMonthly.RunningSpend.Amount,
             "duplicate requestId must not double-accrue.");
     }
 

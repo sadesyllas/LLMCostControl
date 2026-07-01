@@ -15,13 +15,13 @@ namespace LLMCostControl.Grains.Storage;
 public interface IBudgetStore
 {
     /// <summary>
-    /// Resolves the effective budget for the given caller in the given period:
+    /// Resolves the effective budget for the given caller in the given period type:
     /// per-user override wins; otherwise the largest group budget; otherwise
     /// none (§7).
     /// </summary>
     Task<EffectiveBudget> ResolveAsync(
         CallerId callerId,
-        BudgetPeriod period,
+        BudgetPeriodType periodType,
         CancellationToken ct = default);
 }
 

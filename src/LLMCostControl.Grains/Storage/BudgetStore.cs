@@ -22,15 +22,15 @@ public sealed class BudgetStore : IBudgetStore
     }
 
     /// <summary>
-    /// Resolves the effective budget for the given caller and period.
+    /// Resolves the effective budget for the given caller and period type.
     /// </summary>
     public async Task<EffectiveBudget> ResolveAsync(
         CallerId callerId,
-        BudgetPeriod period,
+        BudgetPeriodType periodType,
         CancellationToken ct = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(ct);
         var repo = new BudgetResolutionRepository(context);
-        return await repo.ResolveAsync(callerId, period, ct);
+        return await repo.ResolveAsync(callerId, periodType, ct);
     }
 }

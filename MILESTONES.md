@@ -31,7 +31,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M18 | Admin app: read-only views + pricing file upload | §12.3 | M17, M5 | [x] | [x] |
 | M19 | Contract/conformance tests + E2E local-dev verification | §13.4, §14.3 | M13, M14, M15, M18 | [x] | [x] |
 | M20 | Coding standard: one top-level type per `.cs` file + guard | §17 | M19 | [x] | [x] |
-| M21 | Weekly budget period (multi-period budgeting) | §6.2.1, §6.2.2, §7, §9.4, §10.2 | M20 | [ ] | [ ] |
+| M21 | Weekly budget period (multi-period budgeting) | §6.2.1, §6.2.2, §7, §9.4, §10.2 | M20 | [x] | [x] |
 | M22 | Additional providers (Azure AI Foundry, Vertex AI) | §6.2.3, §8.1, §8.2, §8.5 | M20 | [ ] | [ ] |
 | M23 | Pricing version history (insert-on-change) + usage references version | §8.7, §9.2, §9.4 | M20, M22 | [ ] | [ ] |
 
@@ -416,7 +416,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §6.2.1, §6.2.2, §7, §9.4, §10.2
 - **Depends on:** M20 (and builds on M3, M10, M11, M13, M15, M17)
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - `BudgetPeriodType` enum (`Monthly`, `Weekly`); `BudgetPeriod` generalised to
     identify a concrete instance of either type — calendar month, or **ISO-8601

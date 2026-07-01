@@ -1,4 +1,4 @@
-using LLMCostControl.Domain.Budgets;
+using System.Collections.Generic;
 
 namespace LLMCostControl.Grains.Abstractions;
 
@@ -16,35 +16,41 @@ public sealed record BudgetCheckResult
     [Id(1)]
     public required string CallerId { get; init; }
 
-    /// <summary>The effective budget amount, or null when no budget.</summary>
+    /// <summary>The budgets check details for each configured period.</summary>
     [Id(2)]
-    public decimal? EffectiveBudgetAmount { get; init; }
+    public required List<BudgetPeriodCheckResult> Budgets { get; init; } = [];
 
-    /// <summary>The currency of the effective budget.</summary>
+    /// <summary>The binding period type (e.g. Monthly or Weekly) that determined the decision.</summary>
     [Id(3)]
-    public string? EffectiveBudgetCurrency { get; init; }
+    public string? BindingPeriod { get; init; }
 
-    /// <summary>The caller's current running spend amount.</summary>
+    /// <summary>The binding period key (e.g. 2026-06 or 2026-W26).</summary>
     [Id(4)]
-    public required decimal RunningSpendAmount { get; init; }
+    public string? BindingPeriodKey { get; init; }
 
-    /// <summary>The currency of the running spend.</summary>
+    /// <summary>The budget source of the binding period.</summary>
     [Id(5)]
-    public required string RunningSpendCurrency { get; init; }
+    public string? BindingBudgetSource { get; init; }
 
-    /// <summary>The remaining budget amount.</summary>
+    /// <summary>The effective group id of the binding period.</summary>
     [Id(6)]
-    public required decimal RemainingAmount { get; init; }
+    public Guid? BindingEffectiveGroupId { get; init; }
 
-    /// <summary>The currency of the remaining budget.</summary>
-    [Id(7)]
-    public required string RemainingCurrency { get; init; }
+    /// <summary>Helper property for monthly budget amount compatibility.</summary>
+    public decimal? EffectiveBudgetAmount => Budgets.Find(b => b.Period == "Monthly")?.EffectiveBudgetAmount;
 
-    /// <summary>The source of the effective budget.</summary>
-    [Id(8)]
-    public BudgetSource BudgetSource { get; init; }
+    /// <summary>Helper property for monthly running spend amount compatibility.</summary>
+    public decimal RunningSpendAmount => Budgets.Find(b => b.Period == "Monthly")?.RunningSpendAmount ?? 0m;
 
-    /// <summary>The effective group id, if the source is a group.</summary>
-    [Id(9)]
-    public Guid? EffectiveGroupId { get; init; }
+    /// <summary>Helper property for monthly remaining amount compatibility.</summary>
+    public decimal RemainingAmount => Budgets.Find(b => b.Period == "Monthly")?.RemainingAmount ?? 0m;
+
+    /// <summary>Helper property for monthly remaining currency compatibility.</summary>
+    public string RemainingCurrency => Budgets.Find(b => b.Period == "Monthly")?.BudgetCurrency ?? "USD";
+
+    /// <summary>Helper property for monthly budget source compatibility.</summary>
+    public Domain.Budgets.BudgetSource BudgetSource => Budgets.Find(b => b.Period == "Monthly")?.BudgetSource ?? Domain.Budgets.BudgetSource.None;
+
+    /// <summary>Helper property for monthly effective group id compatibility.</summary>
+    public System.Guid? EffectiveGroupId => Budgets.Find(b => b.Period == "Monthly")?.EffectiveGroupId;
 }

@@ -6,9 +6,8 @@ namespace LLMCostControl.Domain.Usage;
 
 /// <summary>
 /// An append-only audit row recording a single successful usage capture — i.e.
-/// one LLM response whose cost was accrued against a caller.  Running spend can
 /// be reconstructed by summing <see cref="CostAmount"/> per
-/// <see cref="CallerId"/> per <see cref="Period"/>.
+/// <see cref="CallerId"/> per <see cref="PeriodAccruals"/>.
 /// </summary>
 public class UsageEvent
 {
@@ -21,14 +20,7 @@ public class UsageEvent
     /// <summary>The caller whose spend was accrued.</summary>
     public CallerId CallerId { get; init; }
 
-    /// <summary>
-    /// The group whose budget was in effect for this capture, or null when the
-    /// source was an override or none.
-    /// </summary>
-    public Guid? EffectiveGroupId { get; init; }
 
-    /// <summary>Which budget source was in effect for the decision.</summary>
-    public BudgetSource BudgetSource { get; init; }
 
     /// <summary>The model name reported by the gateway.</summary>
     public string Model { get; init; } = string.Empty;
@@ -61,11 +53,8 @@ public class UsageEvent
     /// <summary>The currency of the cost amount.</summary>
     public string CostCurrency { get; init; } = "USD";
 
-    /// <summary>The caller's running spend after this capture.</summary>
-    public decimal RunningSpendAfter { get; init; }
-
-    /// <summary>The budget period this capture falls in.</summary>
-    public BudgetPeriod Period { get; init; }
+    /// <summary>The period accruals associated with this event.</summary>
+    public List<UsageEventPeriodAccrual> PeriodAccruals { get; init; } = [];
 
     /// <summary>Server-side timestamp of the capture.</summary>
     public DateTimeOffset CapturedAt { get; init; }
@@ -77,8 +66,6 @@ public class UsageEvent
     public static UsageEvent Create(
         string eventId,
         CallerId callerId,
-        Guid? effectiveGroupId,
-        BudgetSource budgetSource,
         string model,
         Provider provider,
         long tokensInput,
@@ -88,8 +75,7 @@ public class UsageEvent
         TokenPrices unitPrices,
         decimal costAmount,
         string costCurrency,
-        decimal runningSpendAfter,
-        BudgetPeriod period,
+        IReadOnlyCollection<UsageEventPeriodAccrual> periodAccruals,
         DateTimeOffset? capturedAt = null)
     {
         if (string.IsNullOrWhiteSpace(eventId))
@@ -116,8 +102,6 @@ public class UsageEvent
         {
             EventId = eventId,
             CallerId = callerId,
-            EffectiveGroupId = effectiveGroupId,
-            BudgetSource = budgetSource,
             Model = model.Trim(),
             Provider = provider,
             TokensInput = tokensInput,
@@ -127,8 +111,7 @@ public class UsageEvent
             UnitPrices = unitPrices,
             CostAmount = costAmount,
             CostCurrency = costCurrency,
-            RunningSpendAfter = runningSpendAfter,
-            Period = period,
+            PeriodAccruals = periodAccruals.ToList(),
             CapturedAt = capturedAt ?? DateTimeOffset.UtcNow,
         };
     }

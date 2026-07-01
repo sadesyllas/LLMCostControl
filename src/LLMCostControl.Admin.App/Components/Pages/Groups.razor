@@ -11,10 +11,7 @@
     <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4">
         <div>
             <h1 class="h2 mb-1">Manage Groups</h1>
-            <p class="text-muted mb-0">Create groups, set budgets, and assign members for the current period: <strong>@_currentPeriod</strong></p>
-        </div>
-        <div>
-            <span class="badge bg-secondary p-2">Period: @_currentPeriod</span>
+            <p class="text-muted mb-0">Create groups, set Monthly/Weekly budgets, and assign members.</p>
         </div>
     </div>
 
@@ -99,47 +96,98 @@
                             <div class="row g-4">
                                 <!-- Budget Section -->
                                 <div class="col-md-6">
-                                    <div class="p-3 bg-light rounded-3 h-100">
-                                        <h4 class="h6 mb-3 text-uppercase text-secondary tracking-wider font-semibold">Monthly Budget</h4>
-                                        <div class="mb-3 budget-amount-display">
-                                            @if (group.CurrentBudget != null)
-                                            {
-                                                <div class="d-flex align-items-baseline gap-2">
-                                                    <span class="h3 mb-0 text-primary font-bold">@group.CurrentBudget.Amount.Amount.ToString("F2")</span>
-                                                    <span class="text-muted">@group.CurrentBudget.Amount.Currency</span>
+                                    <div class="row g-3">
+                                        <!-- Monthly Budget Column -->
+                                        <div class="col-sm-6">
+                                            <div class="p-3 bg-light rounded-3 h-100">
+                                                <h4 class="h6 mb-3 text-uppercase text-secondary tracking-wider font-semibold">Monthly Budget</h4>
+                                                <div class="mb-3 budget-amount-display">
+                                                    @if (group.MonthlyBudget != null)
+                                                    {
+                                                        <div class="d-flex align-items-baseline gap-2">
+                                                            <span class="h3 mb-0 text-primary font-bold">@group.MonthlyBudget.Amount.Amount.ToString("F2")</span>
+                                                            <span class="text-muted">@group.MonthlyBudget.Amount.Currency</span>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted italic no-budget-message">No budget set for current period.</span>
+                                                    }
                                                 </div>
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted italic no-budget-message">No budget set for current period.</span>
-                                            }
+
+                                                <AuthorizeView Roles="CostTracker.Admin">
+                                                    <Authorized>
+                                                        <div class="border-top pt-3">
+                                                            <div class="row g-2">
+                                                                <div class="col-7">
+                                                                    <input type="number" class="form-control form-control-sm input-budget-amount" placeholder="Amount" @bind="group.NewMonthlyBudgetAmount" min="0" step="0.01" />
+                                                                </div>
+                                                                <div class="col-5">
+                                                                    <select class="form-select form-select-sm select-budget-currency" @bind="group.NewMonthlyBudgetCurrency">
+                                                                        <option value="USD">USD</option>
+                                                                        <option value="EUR">EUR</option>
+                                                                        <option value="GBP">GBP</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <div class="d-flex gap-2 mt-2">
+                                                                <button class="btn btn-sm btn-primary w-100 btn-set-budget" @onclick="() => UpdateBudgetAsync(group, BudgetPeriodType.Monthly)">Set Budget</button>
+                                                                @if (group.MonthlyBudget != null)
+                                                                {
+                                                                    <button class="btn btn-sm btn-outline-danger btn-clear-budget" @onclick="() => ClearBudgetAsync(group, BudgetPeriodType.Monthly)">Clear</button>
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </Authorized>
+                                                </AuthorizeView>
+                                            </div>
                                         </div>
 
-                                        <AuthorizeView Roles="CostTracker.Admin">
-                                            <Authorized>
-                                                <div class="border-top pt-3">
-                                                    <div class="row g-2">
-                                                        <div class="col-7">
-                                                            <input type="number" class="form-control form-control-sm input-budget-amount" placeholder="Amount" @bind="group.NewBudgetAmount" min="0" step="0.01" />
+                                        <!-- Weekly Budget Column -->
+                                        <div class="col-sm-6">
+                                            <div class="p-3 bg-light rounded-3 h-100">
+                                                <h4 class="h6 mb-3 text-uppercase text-secondary tracking-wider font-semibold">Weekly Budget</h4>
+                                                <div class="mb-3 budget-amount-display">
+                                                    @if (group.WeeklyBudget != null)
+                                                    {
+                                                        <div class="d-flex align-items-baseline gap-2">
+                                                            <span class="h3 mb-0 text-primary font-bold">@group.WeeklyBudget.Amount.Amount.ToString("F2")</span>
+                                                            <span class="text-muted">@group.WeeklyBudget.Amount.Currency</span>
                                                         </div>
-                                                        <div class="col-5">
-                                                            <select class="form-select form-select-sm select-budget-currency" @bind="group.NewBudgetCurrency">
-                                                                <option value="USD">USD</option>
-                                                                <option value="EUR">EUR</option>
-                                                                <option value="GBP">GBP</option>
-                                                            </select>
-                                                        </div>
-                                                    </div>
-                                                    <div class="d-flex gap-2 mt-2">
-                                                        <button class="btn btn-sm btn-primary w-100 btn-set-budget" @onclick="() => UpdateBudgetAsync(group)">Set Budget</button>
-                                                        @if (group.CurrentBudget != null)
-                                                        {
-                                                            <button class="btn btn-sm btn-outline-danger btn-clear-budget" @onclick="() => ClearBudgetAsync(group)">Clear</button>
-                                                        }
-                                                    </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted italic no-budget-message">No budget set for current period.</span>
+                                                    }
                                                 </div>
-                                            </Authorized>
-                                        </AuthorizeView>
+
+                                                <AuthorizeView Roles="CostTracker.Admin">
+                                                    <Authorized>
+                                                        <div class="border-top pt-3">
+                                                            <div class="row g-2">
+                                                                <div class="col-7">
+                                                                    <input type="number" class="form-control form-control-sm input-weekly-budget-amount" placeholder="Amount" @bind="group.NewWeeklyBudgetAmount" min="0" step="0.01" />
+                                                                </div>
+                                                                <div class="col-5">
+                                                                    <select class="form-select form-select-sm select-weekly-budget-currency" @bind="group.NewWeeklyBudgetCurrency">
+                                                                        <option value="USD">USD</option>
+                                                                        <option value="EUR">EUR</option>
+                                                                        <option value="GBP">GBP</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <div class="d-flex gap-2 mt-2">
+                                                                <button class="btn btn-sm btn-primary w-100 btn-set-weekly-budget" @onclick="() => UpdateBudgetAsync(group, BudgetPeriodType.Weekly)">Set Budget</button>
+                                                                @if (group.WeeklyBudget != null)
+                                                                {
+                                                                    <button class="btn btn-sm btn-outline-danger btn-clear-weekly-budget" @onclick="() => ClearBudgetAsync(group, BudgetPeriodType.Weekly)">Clear</button>
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </Authorized>
+                                                </AuthorizeView>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -200,7 +248,6 @@
     private string _newGroupName = string.Empty;
     private string? _globalErrorMessage;
     private string? _globalSuccessMessage;
-    private BudgetPeriod _currentPeriod;
     private bool _isAdmin;
 
     /// <summary>
@@ -211,21 +258,23 @@
         public Guid Id { get; init; }
         public string Name { get; set; } = string.Empty;
         public DateTimeOffset CreatedAt { get; init; }
-        public GroupBudget? CurrentBudget { get; set; }
+        public GroupBudget? MonthlyBudget { get; set; }
+        public GroupBudget? WeeklyBudget { get; set; }
         public List<GroupMembership> Members { get; set; } = new();
 
         // UI states
         public bool IsEditing { get; set; }
         public string EditName { get; set; } = string.Empty;
         public string NewMemberEmail { get; set; } = string.Empty;
-        public decimal? NewBudgetAmount { get; set; }
-        public string NewBudgetCurrency { get; set; } = "USD";
+        public decimal? NewMonthlyBudgetAmount { get; set; }
+        public string NewMonthlyBudgetCurrency { get; set; } = "USD";
+        public decimal? NewWeeklyBudgetAmount { get; set; }
+        public string NewWeeklyBudgetCurrency { get; set; } = "USD";
         public string? ErrorMessage { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
     {
-        _currentPeriod = BudgetPeriod.Current();
         var authState = await AuthStateTask;
         _isAdmin = authState.User.IsInRole("CostTracker.Admin");
 
@@ -246,7 +295,8 @@
 
             foreach (var g in domainGroups)
             {
-                var budget = await budgetRepo.GetAsync(g.Id, _currentPeriod);
+                var monthlyBudget = await budgetRepo.GetAsync(g.Id, BudgetPeriodType.Monthly);
+                var weeklyBudget = await budgetRepo.GetAsync(g.Id, BudgetPeriodType.Weekly);
                 var memberships = await membershipRepo.GetMembersAsync(g.Id);
 
                 viewModels.Add(new GroupViewModel
@@ -254,15 +304,18 @@
                     Id = g.Id,
                     Name = g.Name,
                     CreatedAt = g.CreatedAt,
-                    CurrentBudget = budget,
+                    MonthlyBudget = monthlyBudget,
+                    WeeklyBudget = weeklyBudget,
                     Members = memberships,
                     EditName = g.Name,
-                    NewBudgetAmount = budget?.Amount.Amount,
-                    NewBudgetCurrency = budget?.Amount.Currency ?? "USD"
+                    NewMonthlyBudgetAmount = monthlyBudget?.Amount.Amount,
+                    NewMonthlyBudgetCurrency = monthlyBudget?.Amount.Currency ?? "USD",
+                    NewWeeklyBudgetAmount = weeklyBudget?.Amount.Amount,
+                    NewWeeklyBudgetCurrency = weeklyBudget?.Amount.Currency ?? "USD",
                 });
             }
 
-            _groups = viewModels.OrderBy(x => x.Name).ToList();
+            _groups = viewModels;
         }
         catch (Exception ex)
         {
@@ -284,12 +337,12 @@
             await using var context = await DbFactory.CreateDbContextAsync();
             var groupRepo = new GroupRepository(context);
 
-            var newGroup = Group.Create(_newGroupName);
-            await groupRepo.AddAsync(newGroup);
+            var group = Group.Create(_newGroupName.Trim());
+            await groupRepo.AddAsync(group);
 
             _newGroupName = string.Empty;
             _globalErrorMessage = null;
-            _globalSuccessMessage = $"Group '{newGroup.Name}' created successfully.";
+            _globalSuccessMessage = $"Group '{group.Name}' created successfully.";
 
             await LoadDataAsync();
         }
@@ -312,16 +365,17 @@
         {
             await using var context = await DbFactory.CreateDbContextAsync();
             var groupRepo = new GroupRepository(context);
-            var domainGroup = await groupRepo.GetByIdAsync(model.Id);
 
-            if (domainGroup is not null)
+            var group = await groupRepo.GetByIdAsync(model.Id);
+            if (group != null)
             {
-                domainGroup.Name = model.EditName.Trim();
-                await groupRepo.UpdateAsync(domainGroup);
-                model.IsEditing = false;
-                model.ErrorMessage = null;
-                await LoadDataAsync();
+                group.Name = model.EditName.Trim();
+                await groupRepo.UpdateAsync(group);
             }
+
+            model.IsEditing = false;
+            model.ErrorMessage = null;
+            await LoadDataAsync();
         }
         catch (Exception ex)
         {
@@ -329,14 +383,15 @@
         }
     }
 
-    private async Task DeleteGroupAsync(Guid id)
+    private async Task DeleteGroupAsync(Guid groupId)
     {
         if (!_isAdmin) return;
         try
         {
             await using var context = await DbFactory.CreateDbContextAsync();
             var groupRepo = new GroupRepository(context);
-            await groupRepo.DeleteGroupCascadingAsync(id);
+
+            await groupRepo.DeleteAsync(groupId);
 
             _globalSuccessMessage = "Group deleted successfully.";
             _globalErrorMessage = null;
@@ -348,12 +403,15 @@
         }
     }
 
-    private async Task UpdateBudgetAsync(GroupViewModel model)
+    private async Task UpdateBudgetAsync(GroupViewModel model, BudgetPeriodType periodType)
     {
         if (!_isAdmin) return;
-        if (model.NewBudgetAmount is null or < 0m)
+        decimal? amount = periodType == BudgetPeriodType.Monthly ? model.NewMonthlyBudgetAmount : model.NewWeeklyBudgetAmount;
+        string currency = periodType == BudgetPeriodType.Monthly ? model.NewMonthlyBudgetCurrency : model.NewWeeklyBudgetCurrency;
+
+        if (amount is null or < 0m)
         {
-            model.ErrorMessage = "Budget amount must be zero or positive.";
+            model.ErrorMessage = $"{periodType} budget amount must be zero or positive.";
             return;
         }
 
@@ -362,8 +420,8 @@
             await using var context = await DbFactory.CreateDbContextAsync();
             var budgetRepo = new GroupBudgetRepository(context);
 
-            var money = new Money(model.NewBudgetAmount.Value, model.NewBudgetCurrency);
-            var budget = GroupBudget.Create(model.Id, money, _currentPeriod);
+            var money = new Money(amount.Value, currency);
+            var budget = GroupBudget.Create(model.Id, money, periodType);
 
             await budgetRepo.UpsertAsync(budget);
             model.ErrorMessage = null;
@@ -371,11 +429,11 @@
         }
         catch (Exception ex)
         {
-            model.ErrorMessage = $"Failed to update budget: {ex.Message}";
+            model.ErrorMessage = $"Failed to update {periodType} budget: {ex.Message}";
         }
     }
 
-    private async Task ClearBudgetAsync(GroupViewModel model)
+    private async Task ClearBudgetAsync(GroupViewModel model, BudgetPeriodType periodType)
     {
         if (!_isAdmin) return;
         try
@@ -383,14 +441,21 @@
             await using var context = await DbFactory.CreateDbContextAsync();
             var budgetRepo = new GroupBudgetRepository(context);
 
-            await budgetRepo.DeleteAsync(model.Id, _currentPeriod);
-            model.NewBudgetAmount = null;
+            await budgetRepo.DeleteAsync(model.Id, periodType);
+            if (periodType == BudgetPeriodType.Monthly)
+            {
+                model.NewMonthlyBudgetAmount = null;
+            }
+            else
+            {
+                model.NewWeeklyBudgetAmount = null;
+            }
             model.ErrorMessage = null;
             await LoadDataAsync();
         }
         catch (Exception ex)
         {
-            model.ErrorMessage = $"Failed to clear budget: {ex.Message}";
+            model.ErrorMessage = $"Failed to clear {periodType} budget: {ex.Message}";
         }
     }
 

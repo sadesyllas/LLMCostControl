@@ -105,4 +105,58 @@ public class BudgetPeriodTests
 
         period.ToString().Should().Be("2026-06");
     }
+
+    [Fact]
+    public void Weekly_constructor_accepts_valid_week()
+    {
+        var period = BudgetPeriod.Weekly(2026, 26);
+        period.PeriodType.Should().Be(BudgetPeriodType.Weekly);
+        period.ToString().Should().Be("2026-W26");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(54)]
+    [InlineData(-5)]
+    public void Weekly_constructor_rejects_invalid_week(int week)
+    {
+        var act = () => BudgetPeriod.Weekly(2026, week);
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Weekly_StartDate_is_monday_utc_midnight()
+    {
+        // 2026-W26 starts on Monday, June 22, 2026
+        var period = BudgetPeriod.Weekly(2026, 26);
+        period.StartDate.Should().Be(new DateTimeOffset(2026, 6, 22, 0, 0, 0, TimeSpan.Zero));
+        period.EndDate.Should().Be(new DateTimeOffset(2026, 6, 29, 0, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void Weekly_Next_and_Previous_rollover()
+    {
+        // 2026-W52 next should be 2026-W53 or 2027-W01 depending on ISO calendar
+        // Let's use a standard mid-year week first
+        var period = BudgetPeriod.Weekly(2026, 26);
+        period.Next().ToString().Should().Be("2026-W27");
+        period.Previous().ToString().Should().Be("2026-W25");
+        
+        // 2026-W53 next should be 2027-W01
+        var endOf2026 = BudgetPeriod.Weekly(2026, 53);
+        endOf2026.Next().ToString().Should().Be("2027-W01");
+    }
+
+    [Fact]
+    public void Weekly_Contains_asserts_date_range()
+    {
+        var period = BudgetPeriod.Weekly(2026, 26); // Monday June 22 to Sunday June 28 (inclusive)
+        var inside = new DateTimeOffset(2026, 6, 25, 12, 0, 0, TimeSpan.Zero);
+        var before = new DateTimeOffset(2026, 6, 21, 23, 59, 59, TimeSpan.Zero);
+        var after = new DateTimeOffset(2026, 6, 29, 0, 0, 0, TimeSpan.Zero);
+
+        period.Contains(inside).Should().BeTrue();
+        period.Contains(before).Should().BeFalse();
+        period.Contains(after).Should().BeFalse();
+    }
 }

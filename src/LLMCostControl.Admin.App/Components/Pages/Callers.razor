@@ -12,10 +12,7 @@
     <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4">
         <div>
             <h1 class="h2 mb-1">Callers & Spend Monitoring</h1>
-            <p class="text-muted mb-0">Monitor resolved budgets, running spend, and detailed usage trails for the current period: <strong>@_currentPeriod</strong></p>
-        </div>
-        <div>
-            <span class="badge bg-secondary p-2">Period: @_currentPeriod</span>
+            <p class="text-muted mb-0">Monitor resolved Monthly/Weekly budgets, running spend, and detailed usage trails.</p>
         </div>
     </div>
 
@@ -51,47 +48,51 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="py-3 px-3">Caller Email</th>
-                                    <th class="py-3 px-3">Effective Budget</th>
-                                    <th class="py-3 px-3">Source</th>
-                                    <th class="py-3 px-3">Spend</th>
-                                    <th class="py-3 px-3">Remaining</th>
+                                    <th class="py-3 px-3">Monthly Budget</th>
+                                    <th class="py-3 px-3">Monthly Spend</th>
+                                    <th class="py-3 px-3">Weekly Budget</th>
+                                    <th class="py-3 px-3">Weekly Spend</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach (var caller in _callers)
                                 {
                                     <tr @onclick="() => SelectCallerAsync(caller)" 
-                                        class="cursor-pointer caller-row @(_selectedCaller?.Email == caller.Email ? "table-primary" : "")" 
-                                        style="cursor: pointer;"
-                                        id="caller-row-@caller.Email.Replace("@", "-at-").Replace(".", "-dot-")">
+                                         class="cursor-pointer caller-row @(_selectedCaller?.Email == caller.Email ? "table-primary" : "")" 
+                                         style="cursor: pointer;"
+                                         id="caller-row-@caller.Email.Replace("@", "-at-").Replace(".", "-dot-")">
                                         <td class="px-3 font-mono small font-semibold">@caller.Email</td>
+                                        
+                                        <!-- Monthly Budget -->
                                         <td class="px-3 small">
-                                            @if (caller.EffectiveBudget.HasBudget)
+                                            @if (caller.MonthlyBudget.HasBudget)
                                             {
-                                                <span>@caller.EffectiveBudget.Amount!.Amount.ToString("F2") @caller.EffectiveBudget.Amount.Currency</span>
+                                                <span>@caller.MonthlyBudget.Amount!.Amount.ToString("F2") @caller.MonthlyBudget.Amount.Currency</span>
+                                                <span class="badge @GetSourceBadgeClass(caller.MonthlyBudget.Source) ms-1">@caller.MonthlyBudget.Source</span>
                                             }
                                             else
                                             {
                                                 <span class="text-muted">None</span>
                                             }
                                         </td>
-                                        <td class="px-3">
-                                            <span class="badge @GetSourceBadgeClass(caller.EffectiveBudget.Source)">
-                                                @caller.EffectiveBudget.Source
-                                            </span>
+                                        <td class="px-3 font-bold text-danger small">
+                                            @caller.MonthlyRunningSpend.ToString("F2") @caller.PreferredCurrency
                                         </td>
-                                        <td class="px-3 font-bold text-danger">
-                                            @caller.RunningSpend.ToString("F2") @caller.PreferredCurrency
-                                        </td>
-                                        <td class="px-3 font-bold @(caller.RemainingBudget < 0 ? "text-danger" : "text-success")">
-                                            @if (caller.EffectiveBudget.HasBudget)
+
+                                        <!-- Weekly Budget -->
+                                        <td class="px-3 small">
+                                            @if (caller.WeeklyBudget.HasBudget)
                                             {
-                                                <span>@caller.RemainingBudget.ToString("F2") @caller.PreferredCurrency</span>
+                                                <span>@caller.WeeklyBudget.Amount!.Amount.ToString("F2") @caller.WeeklyBudget.Amount.Currency</span>
+                                                <span class="badge @GetSourceBadgeClass(caller.WeeklyBudget.Source) ms-1">@caller.WeeklyBudget.Source</span>
                                             }
                                             else
                                             {
-                                                <span class="text-muted">N/A</span>
+                                                <span class="text-muted">None</span>
                                             }
+                                        </td>
+                                        <td class="px-3 font-bold text-danger small">
+                                            @caller.WeeklyRunningSpend.ToString("F2") @caller.PreferredCurrency
                                         </td>
                                     </tr>
                                 }
@@ -129,7 +130,7 @@
                         else if (!_usageEvents.Any())
                         {
                             <div class="text-center py-5 my-auto text-muted" id="no-events-message">
-                                <p class="mb-0">No usage events captured for <strong>@_selectedCaller.Email</strong> in this period.</p>
+                                <p class="mb-0">No usage events captured for <strong>@_selectedCaller.Email</strong> in the current monthly period.</p>
                             </div>
                         }
                         else
@@ -166,7 +167,7 @@
                                             </div>
                                         </div>
                                         <div class="border-top pt-2 mt-2 d-flex justify-content-between text-muted text-xs">
-                                            <span>Spend After: @ev.RunningSpendAfter.ToString("F2") @ev.CostCurrency</span>
+                                            <span>Spend After: @(string.Join(", ", ev.PeriodAccruals.Select(a => $"{a.PeriodType}: {a.RunningSpendAfter:F2} {ev.CostCurrency}")))</span>
                                             <span class="text-truncate" style="max-width: 150px;" title="Request ID: @ev.EventId">ID: @ev.EventId</span>
                                         </div>
                                     </div>
@@ -193,12 +194,11 @@
     public sealed class CallerViewModel
     {
         public required string Email { get; init; }
-        public required EffectiveBudget EffectiveBudget { get; init; }
-        public required decimal RunningSpend { get; init; }
+        public required EffectiveBudget MonthlyBudget { get; init; }
+        public required EffectiveBudget WeeklyBudget { get; init; }
+        public required decimal MonthlyRunningSpend { get; init; }
+        public required decimal WeeklyRunningSpend { get; init; }
         public required string PreferredCurrency { get; init; }
-        public decimal RemainingBudget => EffectiveBudget.HasBudget 
-            ? EffectiveBudget.Amount!.Amount - RunningSpend 
-            : 0m;
     }
 
     protected override async Task OnInitializedAsync()
@@ -217,7 +217,6 @@
             var membershipRepo = new GroupMembershipRepository(context);
             var overrideRepo = new UserBudgetOverrideRepository(context);
 
-            // Fetch distinct caller emails from all linked aggregates via repositories
             var members = (await membershipRepo.GetDistinctCallersAsync()).Select(c => c.Value);
             var overrides = (await overrideRepo.GetDistinctCallersAsync()).Select(c => c.Value);
             var usageEvents = (await usageEventRepo.GetDistinctCallersAsync()).Select(c => c.Value);
@@ -234,19 +233,28 @@
             {
                 var callerId = CallerId.From(email);
                 
-                // Resolve effective budget
-                var budget = await budgetResolutionRepo.ResolveAsync(callerId, _currentPeriod);
+                var monthlyBudget = await budgetResolutionRepo.ResolveAsync(callerId, BudgetPeriodType.Monthly);
+                var weeklyBudget = await budgetResolutionRepo.ResolveAsync(callerId, BudgetPeriodType.Weekly);
 
-                // Compute running spend for period
-                var events = await usageEventRepo.GetForCallerAsync(callerId, _currentPeriod);
-                var spend = events.Sum(e => e.CostAmount);
-                var currency = events.FirstOrDefault()?.CostCurrency ?? budget.Amount?.Currency ?? "USD";
+                var now = DateTimeOffset.UtcNow;
+                var currentMonthly = BudgetPeriod.FromDate(now, BudgetPeriodType.Monthly);
+                var currentWeekly = BudgetPeriod.FromDate(now, BudgetPeriodType.Weekly);
+
+                var monthlyEvents = await usageEventRepo.GetForCallerAsync(callerId, currentMonthly);
+                var monthlySpend = monthlyEvents.Sum(e => e.CostAmount);
+
+                var weeklyEvents = await usageEventRepo.GetForCallerAsync(callerId, currentWeekly);
+                var weeklySpend = weeklyEvents.Sum(e => e.CostAmount);
+
+                var currency = monthlyEvents.FirstOrDefault()?.CostCurrency ?? weeklyEvents.FirstOrDefault()?.CostCurrency ?? monthlyBudget.Amount?.Currency ?? weeklyBudget.Amount?.Currency ?? "USD";
 
                 viewModels.Add(new CallerViewModel
                 {
                     Email = email,
-                    EffectiveBudget = budget,
-                    RunningSpend = spend,
+                    MonthlyBudget = monthlyBudget,
+                    WeeklyBudget = weeklyBudget,
+                    MonthlyRunningSpend = monthlySpend,
+                    WeeklyRunningSpend = weeklySpend,
                     PreferredCurrency = currency
                 });
             }

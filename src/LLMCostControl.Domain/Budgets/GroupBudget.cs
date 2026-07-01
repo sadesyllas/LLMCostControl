@@ -16,19 +16,19 @@ public class GroupBudget
     /// <summary>The budget amount and currency.</summary>
     public required Money Amount { get; set; }
 
-    /// <summary>The budget period this amount applies to.</summary>
-    public BudgetPeriod Period { get; init; }
+    /// <summary>The budget period type this amount applies to.</summary>
+    public BudgetPeriodType PeriodType { get; init; }
 
     /// <summary>When the budget was set.</summary>
     public DateTimeOffset SetAt { get; init; }
 
     /// <summary>
-    /// Creates a new <see cref="GroupBudget"/> for the given group and period.
+    /// Creates a new <see cref="GroupBudget"/> for the given group and period type.
     /// </summary>
     /// <param name="groupId">The group id; cannot be empty.</param>
     /// <param name="amount">The budget amount; cannot be negative.</param>
-    /// <param name="period">The budget period.</param>
-    public static GroupBudget Create(Guid groupId, Money amount, BudgetPeriod period)
+    /// <param name="periodType">The budget period type.</param>
+    public static GroupBudget Create(Guid groupId, Money amount, BudgetPeriodType periodType)
     {
         if (groupId == Guid.Empty)
         {
@@ -45,7 +45,7 @@ public class GroupBudget
             Id = Guid.NewGuid(),
             GroupId = groupId,
             Amount = amount,
-            Period = period,
+            PeriodType = periodType,
             SetAt = DateTimeOffset.UtcNow,
         };
     }

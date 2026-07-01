@@ -17,20 +17,20 @@ public class UserBudgetOverride
     /// <summary>The budget amount and currency.</summary>
     public required Money Amount { get; set; }
 
-    /// <summary>The budget period this override applies to.</summary>
-    public BudgetPeriod Period { get; init; }
+    /// <summary>The budget period type this override applies to.</summary>
+    public BudgetPeriodType PeriodType { get; init; }
 
     /// <summary>When the override was set.</summary>
     public DateTimeOffset SetAt { get; init; }
 
     /// <summary>
     /// Creates a new <see cref="UserBudgetOverride"/> for the given caller and
-    /// period.
+    /// period type.
     /// </summary>
     /// <param name="callerId">The caller.</param>
     /// <param name="amount">The budget amount; cannot be negative.</param>
-    /// <param name="period">The budget period.</param>
-    public static UserBudgetOverride Create(CallerId callerId, Money amount, BudgetPeriod period)
+    /// <param name="periodType">The budget period type.</param>
+    public static UserBudgetOverride Create(CallerId callerId, Money amount, BudgetPeriodType periodType)
     {
         if (amount.IsNegative)
         {
@@ -42,7 +42,7 @@ public class UserBudgetOverride
             Id = Guid.NewGuid(),
             CallerId = callerId,
             Amount = amount,
-            Period = period,
+            PeriodType = periodType,
             SetAt = DateTimeOffset.UtcNow,
         };
     }

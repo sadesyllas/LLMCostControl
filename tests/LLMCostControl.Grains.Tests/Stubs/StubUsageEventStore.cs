@@ -63,7 +63,7 @@ public sealed class StubUsageEventStore : IUsageEventStore
         CancellationToken ct = default)
     {
         var results = _events.Values
-            .Where(e => e.CallerId == callerId && e.Period == period)
+            .Where(e => e.CallerId == callerId && e.PeriodAccruals.Any(a => a.PeriodType == period.PeriodType && a.PeriodKey == period.Key))
             .OrderBy(e => e.CapturedAt)
             .ToList();
         return Task.FromResult(results);

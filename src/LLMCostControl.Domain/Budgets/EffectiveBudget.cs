@@ -18,6 +18,9 @@ public record EffectiveBudget
     /// <summary>The group id whose budget was in effect, or null for override/none.</summary>
     public Guid? GroupId { get; init; }
 
+    /// <summary>The budget period type in effect.</summary>
+    public BudgetPeriodType PeriodType { get; init; }
+
     /// <summary>
     /// True when the caller has an explicit budget — <b>including an explicit zero</b>.
     /// A zero budget is a real, intentional "spend nothing" budget (it denies on
@@ -29,27 +32,30 @@ public record EffectiveBudget
     public bool HasBudget => Amount is not null;
 
     /// <summary>Creates an <see cref="EffectiveBudget"/> from a per-user override.</summary>
-    public static EffectiveBudget FromUserOverride(Money amount) => new()
+    public static EffectiveBudget FromUserOverride(Money amount, BudgetPeriodType periodType = BudgetPeriodType.Monthly) => new()
     {
         Amount = amount,
         Source = BudgetSource.UserOverride,
         GroupId = null,
+        PeriodType = periodType,
     };
 
     /// <summary>Creates an <see cref="EffectiveBudget"/> from a group budget.</summary>
-    public static EffectiveBudget FromGroup(Money amount, Guid groupId) => new()
+    public static EffectiveBudget FromGroup(Money amount, Guid groupId, BudgetPeriodType periodType = BudgetPeriodType.Monthly) => new()
     {
         Amount = amount,
         Source = BudgetSource.Group,
         GroupId = groupId,
+        PeriodType = periodType,
     };
 
     /// <summary>Creates an <see cref="EffectiveBudget"/> representing no budget.</summary>
-    public static EffectiveBudget None() => new()
+    public static EffectiveBudget None(BudgetPeriodType periodType = BudgetPeriodType.Monthly) => new()
     {
         Amount = null,
         Source = BudgetSource.None,
         GroupId = null,
+        PeriodType = periodType,
     };
 
     /// <summary>
@@ -58,13 +64,15 @@ public record EffectiveBudget
     /// </summary>
     /// <param name="userOverride">The caller's per-user override, if any.</param>
     /// <param name="groupBudgets">The caller's group budgets, keyed by group id.</param>
+    /// <param name="periodType">The budget period type to resolve.</param>
     public static EffectiveBudget Resolve(
         UserBudgetOverride? userOverride,
-        IReadOnlyList<(Guid GroupId, GroupBudget Budget)> groupBudgets)
+        IReadOnlyList<(Guid GroupId, GroupBudget Budget)> groupBudgets,
+        BudgetPeriodType periodType)
     {
         if (userOverride is not null)
         {
-            return FromUserOverride(userOverride.Amount);
+            return FromUserOverride(userOverride.Amount, periodType);
         }
 
         if (groupBudgets.Count > 0)
@@ -73,9 +81,9 @@ public record EffectiveBudget
                 .OrderByDescending(g => g.Budget.Amount.Amount)
                 .First();
 
-            return FromGroup(largest.Budget.Amount, largest.GroupId);
+            return FromGroup(largest.Budget.Amount, largest.GroupId, periodType);
         }
 
-        return None();
+        return None(periodType);
     }
 }

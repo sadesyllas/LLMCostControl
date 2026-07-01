@@ -18,21 +18,21 @@ public class BudgetResolutionRepository
     public BudgetResolutionRepository(CostTrackerDbContext db) => _db = db;
 
     /// <summary>
-    /// Resolves the effective budget for a caller in a given period:
+    /// Resolves the effective budget for a caller for a given period type:
     /// per-user override wins; otherwise the largest group budget; otherwise
     /// none.
     /// </summary>
     public async Task<EffectiveBudget> ResolveAsync(
         CallerId callerId,
-        BudgetPeriod period,
+        BudgetPeriodType periodType,
         CancellationToken ct = default)
     {
         var userOverride = await _db.UserBudgetOverrides
-            .FirstOrDefaultAsync(o => o.CallerId == callerId && o.Period == period, ct);
+            .FirstOrDefaultAsync(o => o.CallerId == callerId && o.PeriodType == periodType, ct);
 
         if (userOverride is not null)
         {
-            return EffectiveBudget.FromUserOverride(userOverride.Amount);
+            return EffectiveBudget.FromUserOverride(userOverride.Amount, periodType);
         }
 
         var groupIds = await _db.GroupMemberships
@@ -42,22 +42,22 @@ public class BudgetResolutionRepository
 
         if (groupIds.Count == 0)
         {
-            return EffectiveBudget.None();
+            return EffectiveBudget.None(periodType);
         }
 
         var groupBudgets = await _db.GroupBudgets
-            .Where(b => groupIds.Contains(b.GroupId) && b.Period == period)
+            .Where(b => groupIds.Contains(b.GroupId) && b.PeriodType == periodType)
             .ToListAsync(ct);
 
         if (groupBudgets.Count == 0)
         {
-            return EffectiveBudget.None();
+            return EffectiveBudget.None(periodType);
         }
 
         var largest = groupBudgets
             .OrderByDescending(b => b.Amount.Amount)
             .First();
 
-        return EffectiveBudget.FromGroup(largest.Amount, largest.GroupId);
+        return EffectiveBudget.FromGroup(largest.Amount, largest.GroupId, periodType);
     }
 }

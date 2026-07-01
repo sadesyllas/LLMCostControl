@@ -30,6 +30,7 @@ public abstract class RepositoryTestBase : IAsyncLifetime
 
         var options = new DbContextOptionsBuilder<CostTrackerDbContext>()
             .UseNpgsql(_postgres.GetConnectionString())
+            .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning))
             .Options;
 
         _db = new CostTrackerDbContext(options);
