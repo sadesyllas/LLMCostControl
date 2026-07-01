@@ -60,6 +60,7 @@ public sealed class PricingCache : IPricingCache
             CacheWrite = pricing.Prices.CacheWrite,
             Currency = pricing.Currency,
             IsStale = pricing.IsStale,
+            PricingVersionId = pricing.Id,
         };
 
         lock (_lock)

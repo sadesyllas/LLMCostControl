@@ -93,6 +93,10 @@ public sealed class CallersViewTests : TestContext, IDisposable
             await budgetRepo.UpsertAsync(GroupBudget.Create(smallGroup.Id, new Money(30m, "USD"), BudgetPeriodType.Monthly));
             await budgetRepo.UpsertAsync(GroupBudget.Create(bigGroup.Id, new Money(75m, "USD"), BudgetPeriodType.Monthly));
 
+            var pricingRepo = new ModelPricingRepository(db);
+            var pricing = ModelPricing.Create(Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m));
+            var versionId = await pricingRepo.InsertNewVersionAsync(pricing);
+
             var usageEventRepo = new UsageEventRepository(db);
             var accruals = new[]
             {
@@ -115,7 +119,7 @@ public sealed class CallersViewTests : TestContext, IDisposable
                 tokensOutput: 500,
                 tokensCacheRead: 0,
                 tokensCacheWrite: 0,
-                unitPrices: TokenPrices.Create(5m, 15m, 0m),
+                pricingVersionId: versionId,
                 costAmount: 0.0125m,
                 costCurrency: "USD",
                 periodAccruals: accruals,

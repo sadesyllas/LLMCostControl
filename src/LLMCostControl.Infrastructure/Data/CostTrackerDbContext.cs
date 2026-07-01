@@ -151,8 +151,9 @@ public class CostTrackerDbContext : DbContext
             e.Property(x => x.Currency).IsRequired().HasMaxLength(3);
             e.Property(x => x.Unit).IsRequired().HasMaxLength(30);
             e.Property(x => x.FetchedAt).IsRequired();
-            e.Property(x => x.StaleSince);
-            e.HasIndex(x => new { x.Provider, x.Model }).IsUnique();
+            e.Property(x => x.EffectiveFrom).IsRequired().HasColumnName("effective_from");
+            e.Ignore(x => x.StaleSince);
+            e.HasIndex(x => new { x.Provider, x.Model, x.EffectiveFrom });
         });
     }
 
@@ -174,17 +175,16 @@ public class CostTrackerDbContext : DbContext
             e.Property(x => x.TokensOutput).HasColumnName("tokens_output");
             e.Property(x => x.TokensCacheRead).HasColumnName("tokens_cache_read");
             e.Property(x => x.TokensCacheWrite).HasColumnName("tokens_cache_write");
-            e.ComplexProperty(x => x.UnitPrices, "unit_prices", p =>
-            {
-                p.Property(pp => pp.Input).HasColumnName("unit_price_input").HasPrecision(18, 8);
-                p.Property(pp => pp.Output).HasColumnName("unit_price_output").HasPrecision(18, 8);
-                p.Property(pp => pp.CacheRead).HasColumnName("unit_price_cache_read").HasPrecision(18, 8);
-                p.Property(pp => pp.CacheWrite).HasColumnName("unit_price_cache_write").HasPrecision(18, 8);
-            });
+            e.Property(x => x.PricingVersionId).HasColumnName("pricing_version_id").IsRequired();
             e.Property(x => x.CostAmount).HasColumnName("cost_amount").HasPrecision(18, 8);
             e.Property(x => x.CostCurrency).HasColumnName("cost_currency").IsRequired().HasMaxLength(3);
             e.Property(x => x.CapturedAt).HasColumnName("captured_at").IsRequired();
             e.HasIndex(x => x.CapturedAt);
+
+            e.HasOne<ModelPricing>()
+                .WithMany()
+                .HasForeignKey(x => x.PricingVersionId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             e.HasMany(x => x.PeriodAccruals)
                 .WithOne()

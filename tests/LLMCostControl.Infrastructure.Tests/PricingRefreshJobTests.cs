@@ -148,11 +148,11 @@ public class PricingRefreshJobTests : RepositoryTestBase
     }
 
     [Fact]
-    public async Task RefreshAll_replaces_old_entries_for_provider()
+    public async Task RefreshAll_adds_new_versions_and_retains_historical_entries_for_provider()
     {
         var repo = new ModelPricingRepository(Db);
-        await repo.UpsertAsync(MakePricing(Provider.OpenAI, "gpt-4o", 2.5m));
-        await repo.UpsertAsync(MakePricing(Provider.OpenAI, "old-model", 1m));
+        await repo.InsertNewVersionAsync(MakePricing(Provider.OpenAI, "gpt-4o", 2.5m));
+        await repo.InsertNewVersionAsync(MakePricing(Provider.OpenAI, "old-model", 1m));
 
         var adapter = new StubPricingAdapter(Provider.OpenAI, [
             MakePricing(Provider.OpenAI, "gpt-4o", 3m),
@@ -170,10 +170,10 @@ public class PricingRefreshJobTests : RepositoryTestBase
         await job.RefreshAllAsync();
 
         var entries = await repo.GetByProviderAsync(Provider.OpenAI);
-        entries.Should().HaveCount(2);
-        entries.Select(e => e.Model).Should().BeEquivalentTo(["gpt-4o", "gpt-4o-mini"]);
+        entries.Should().HaveCount(3);
+        entries.Select(e => e.Model).Should().BeEquivalentTo(["gpt-4o", "gpt-4o-mini", "old-model"]);
         entries.Single(e => e.Model == "gpt-4o").Prices.Input.Should().Be(3m);
-        (await repo.GetByModelAsync("old-model")).Should().BeNull();
+        (await repo.GetByModelAsync("old-model")).Should().NotBeNull();
     }
 
     private sealed class SlowPricingAdapter(Provider provider, TaskCompletionSource tcs) : IPricingAdapter

@@ -1,12 +1,17 @@
 using LLMCostControl.Infrastructure.Data;
 using LLMCostControl.Domain.Pricing;
 using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LLMCostControl.Infrastructure.Repositories;
 
 /// <summary>
-/// Repository for <see cref="ModelPricing"/> entities: current pricing per
-/// model, written by the refresh job and read by the pricing grains.
+/// Repository for <see cref="ModelPricing"/> entities: versioned pricing history per
+/// model, written by the refresh job / admin upload and read by the pricing grains.
 /// </summary>
 public class ModelPricingRepository
 {
@@ -15,80 +20,132 @@ public class ModelPricingRepository
     /// <summary>Creates the repository with the given DbContext.</summary>
     public ModelPricingRepository(CostTrackerDbContext db) => _db = db;
 
-    /// <summary>Gets pricing for a single model by name, or null.</summary>
-    public Task<ModelPricing?> GetByModelAsync(string model, CancellationToken ct = default)
-        => _db.ModelPricing.FirstOrDefaultAsync(p => p.Model == model, ct);
-
-    /// <summary>
-    /// Gets pricing for a single (provider, model) pair, or null. This is the
-    /// capture-path join key (§8.5): model names are unique only within a provider.
-    /// </summary>
-    public Task<ModelPricing?> GetByProviderAndModelAsync(Provider provider, string model, CancellationToken ct = default)
-        => _db.ModelPricing.FirstOrDefaultAsync(p => p.Provider == provider && p.Model == model, ct);
-
-    /// <summary>Returns all current pricing entries.</summary>
-    public Task<List<ModelPricing>> GetAllAsync(CancellationToken ct = default)
-        => _db.ModelPricing.ToListAsync(ct);
-
-    /// <summary>Returns all pricing entries for a given provider.</summary>
-    public Task<List<ModelPricing>> GetByProviderAsync(Provider provider, CancellationToken ct = default)
-        => _db.ModelPricing.Where(p => p.Provider == provider).ToListAsync(ct);
-
-    /// <summary>
-    /// Adds or replaces pricing for a model (upsert by provider and model name) and saves.
-    /// </summary>
-    public async Task UpsertAsync(ModelPricing pricing, CancellationToken ct = default)
+    private static ModelPricing? ApplyDynamicStaleness(ModelPricing? pricing)
     {
-        var existing = await _db.ModelPricing
-            .FirstOrDefaultAsync(p => p.Provider == pricing.Provider && p.Model == pricing.Model, ct);
-
-        if (existing is not null)
+        if (pricing is null)
         {
-            _db.ModelPricing.Remove(existing);
+            return null;
         }
 
-        await _db.ModelPricing.AddAsync(pricing, ct);
-        await _db.SaveChangesAsync(ct);
+        if (pricing.StaleSince is null && DateTimeOffset.UtcNow - pricing.FetchedAt > TimeSpan.FromHours(1))
+        {
+            pricing.StaleSince = pricing.FetchedAt + TimeSpan.FromHours(1);
+        }
+
+        return pricing;
     }
 
-    /// <summary>Replaces all pricing for a provider in a single atomic operation.</summary>
+    /// <summary>Gets the latest pricing version for a single model by name, or null.</summary>
+    public async Task<ModelPricing?> GetByModelAsync(string model, CancellationToken ct = default)
+    {
+        var res = await _db.ModelPricing
+            .Where(p => p.Model == model)
+            .OrderByDescending(p => p.EffectiveFrom)
+            .FirstOrDefaultAsync(ct);
+        return ApplyDynamicStaleness(res);
+    }
+
+    /// <summary>
+    /// Gets the latest pricing version for a single (provider, model) pair, or null.
+    /// </summary>
+    public async Task<ModelPricing?> GetByProviderAndModelAsync(Provider provider, string model, CancellationToken ct = default)
+    {
+        var res = await _db.ModelPricing
+            .Where(p => p.Provider == provider && p.Model == model)
+            .OrderByDescending(p => p.EffectiveFrom)
+            .FirstOrDefaultAsync(ct);
+        return ApplyDynamicStaleness(res);
+    }
+
+    /// <summary>Returns the latest pricing version for all models.</summary>
+    public async Task<List<ModelPricing>> GetAllAsync(CancellationToken ct = default)
+    {
+        var all = await _db.ModelPricing.ToListAsync(ct);
+        var filtered = all
+            .GroupBy(p => new { p.Provider, p.Model })
+            .Select(g => g.OrderByDescending(p => p.EffectiveFrom).First())
+            .ToList();
+
+        foreach (var item in filtered)
+        {
+            ApplyDynamicStaleness(item);
+        }
+
+        return filtered;
+    }
+
+    /// <summary>Returns the latest pricing version for all models under a given provider.</summary>
+    public async Task<List<ModelPricing>> GetByProviderAsync(Provider provider, CancellationToken ct = default)
+    {
+        var all = await _db.ModelPricing.Where(p => p.Provider == provider).ToListAsync(ct);
+        var filtered = all
+            .GroupBy(p => p.Model)
+            .Select(g => g.OrderByDescending(p => p.EffectiveFrom).First())
+            .ToList();
+
+        foreach (var item in filtered)
+        {
+            ApplyDynamicStaleness(item);
+        }
+
+        return filtered;
+    }
+
+    /// <summary>
+    /// Inserts a new pricing version using insert-on-change logic.
+    /// If the latest version for the same provider and model has identical pricing,
+    /// it is a no-op and returns the existing version's ID. Otherwise, it generates
+    /// a new version and inserts it.
+    /// </summary>
+    public async Task<Guid> InsertNewVersionAsync(ModelPricing pricing, CancellationToken ct = default)
+    {
+        var latest = await GetByProviderAndModelAsync(pricing.Provider, pricing.Model, ct);
+
+        if (latest is not null &&
+            latest.Prices.Input == pricing.Prices.Input &&
+            latest.Prices.Output == pricing.Prices.Output &&
+            latest.Prices.CacheRead == pricing.Prices.CacheRead &&
+            latest.Prices.CacheWrite == pricing.Prices.CacheWrite &&
+            string.Equals(latest.Currency, pricing.Currency, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(latest.Unit, pricing.Unit, StringComparison.OrdinalIgnoreCase))
+        {
+            return latest.Id;
+        }
+
+        var newVersion = ModelPricing.Create(
+            pricing.Provider,
+            pricing.Model,
+            pricing.Prices,
+            pricing.Currency,
+            pricing.Unit,
+            pricing.FetchedAt,
+            pricing.EffectiveFrom != default ? pricing.EffectiveFrom : DateTimeOffset.UtcNow);
+
+        await _db.ModelPricing.AddAsync(newVersion, ct);
+        await _db.SaveChangesAsync(ct);
+        return newVersion.Id;
+    }
+
+    /// <summary>Replaces provider pricing atomically using insert-on-change.</summary>
     public async Task ReplaceProviderPricingAsync(
         Provider provider,
         IReadOnlyCollection<ModelPricing> entries,
         CancellationToken ct = default)
     {
-        var existing = await _db.ModelPricing
-            .Where(p => p.Provider == provider)
-            .ToListAsync(ct);
-
-        _db.ModelPricing.RemoveRange(existing);
-        await _db.ModelPricing.AddRangeAsync(entries, ct);
-        await _db.SaveChangesAsync(ct);
+        foreach (var entry in entries)
+        {
+            await InsertNewVersionAsync(entry, ct);
+        }
     }
 
-    /// <summary>
-    /// Replaces the pricing for multiple providers atomically.
-    /// For each provider in the given entries, deletes existing entries of that provider
-    /// and inserts the new ones.
-    /// </summary>
+    /// <summary>Replaces multiple providers pricing atomically using insert-on-change.</summary>
     public async Task ReplaceMultipleProvidersPricingAsync(
         IReadOnlyCollection<ModelPricing> entries,
         CancellationToken ct = default)
     {
-        var providers = entries.Select(e => e.Provider).Distinct().ToList();
-        foreach (var provider in providers)
+        foreach (var entry in entries)
         {
-            var existing = await _db.ModelPricing
-                .Where(p => p.Provider == provider)
-                .ToListAsync(ct);
-            _db.ModelPricing.RemoveRange(existing);
+            await InsertNewVersionAsync(entry, ct);
         }
-
-        if (entries.Count > 0)
-        {
-            await _db.ModelPricing.AddRangeAsync(entries, ct);
-        }
-        await _db.SaveChangesAsync(ct);
     }
 }
-

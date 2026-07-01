@@ -27,8 +27,12 @@ public class ModelPricing
     /// <summary>When the prices were fetched from the source.</summary>
     public DateTimeOffset FetchedAt { get; init; }
 
+    /// <summary>The timestamp when this pricing version became effective (§8.7).</summary>
+    public DateTimeOffset EffectiveFrom { get; init; }
+
     /// <summary>
     /// When the prices became stale (fetch failure / fallback). Null when fresh.
+    /// This property is computed at read time and not persisted in the database (§8.7).
     /// </summary>
     public DateTimeOffset? StaleSince { get; set; }
 
@@ -44,13 +48,15 @@ public class ModelPricing
     /// <param name="currency">The currency; defaults to USD.</param>
     /// <param name="unit">The pricing unit; defaults to per-1M-tokens.</param>
     /// <param name="fetchedAt">The fetch timestamp; defaults to now.</param>
+    /// <param name="effectiveFrom">The version effective timestamp; defaults to fetchedAt.</param>
     public static ModelPricing Create(
         Provider provider,
         string model,
         TokenPrices prices,
         string currency = "USD",
         string unit = "per-1M-tokens",
-        DateTimeOffset? fetchedAt = null)
+        DateTimeOffset? fetchedAt = null,
+        DateTimeOffset? effectiveFrom = null)
     {
         if (string.IsNullOrWhiteSpace(model))
         {
@@ -62,6 +68,7 @@ public class ModelPricing
             throw new ArgumentException("Currency cannot be empty.", nameof(currency));
         }
 
+        var fetchTime = fetchedAt ?? DateTimeOffset.UtcNow;
         return new ModelPricing
         {
             Id = Guid.NewGuid(),
@@ -70,7 +77,8 @@ public class ModelPricing
             Prices = prices,
             Currency = currency,
             Unit = unit,
-            FetchedAt = fetchedAt ?? DateTimeOffset.UtcNow,
+            FetchedAt = fetchTime,
+            EffectiveFrom = effectiveFrom ?? fetchTime,
         };
     }
 }

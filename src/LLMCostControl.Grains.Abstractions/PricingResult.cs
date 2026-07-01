@@ -29,4 +29,8 @@ public sealed record PricingResult
     /// <summary>True when the pricing is stale (fallback was used).</summary>
     [Id(5)]
     public bool IsStale { get; init; }
+
+    /// <summary>The ID of this model pricing version (§8.7, M23).</summary>
+    [Id(6)]
+    public required Guid PricingVersionId { get; init; }
 }

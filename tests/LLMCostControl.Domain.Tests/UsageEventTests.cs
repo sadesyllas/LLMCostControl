@@ -16,7 +16,7 @@ public class UsageEventTests
     {
         var callerId = CallerId.From("bob@example.com");
         var groupId = Guid.NewGuid();
-        var prices = TokenPrices.Create(2.5m, 10m, 1.25m);
+        var pricingVersionId = Guid.NewGuid();
         var capturedAt = new DateTimeOffset(2026, 6, 15, 10, 0, 0, TimeSpan.Zero);
 
         var accruals = new[]
@@ -40,7 +40,7 @@ public class UsageEventTests
             tokensOutput: 500,
             tokensCacheRead: 200,
             tokensCacheWrite: 0,
-            unitPrices: prices,
+            pricingVersionId: pricingVersionId,
             costAmount: 0.0125m,
             costCurrency: "USD",
             periodAccruals: accruals,
@@ -54,7 +54,7 @@ public class UsageEventTests
         evt.TokensOutput.Should().Be(500);
         evt.TokensCacheRead.Should().Be(200);
         evt.TokensCacheWrite.Should().Be(0);
-        evt.UnitPrices.Should().Be(prices);
+        evt.PricingVersionId.Should().Be(pricingVersionId);
         evt.CostAmount.Should().Be(0.0125m);
         evt.CostCurrency.Should().Be("USD");
         evt.PeriodAccruals.Should().ContainSingle();
@@ -76,7 +76,7 @@ public class UsageEventTests
             model: "gpt-4o",
             provider: Provider.OpenAI,
             tokensInput: 0, tokensOutput: 0, tokensCacheRead: 0, tokensCacheWrite: 0,
-            unitPrices: TokenPrices.Create(1m, 1m),
+            pricingVersionId: Guid.NewGuid(),
             costAmount: 0m, costCurrency: "USD",
             periodAccruals: Array.Empty<UsageEventPeriodAccrual>());
 
@@ -92,7 +92,7 @@ public class UsageEventTests
             model: "gpt-4o",
             provider: Provider.OpenAI,
             tokensInput: -1, tokensOutput: 0, tokensCacheRead: 0, tokensCacheWrite: 0,
-            unitPrices: TokenPrices.Create(1m, 1m),
+            pricingVersionId: Guid.NewGuid(),
             costAmount: 0m, costCurrency: "USD",
             periodAccruals: Array.Empty<UsageEventPeriodAccrual>());
 

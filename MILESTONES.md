@@ -494,7 +494,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §8.7, §9.2, §9.4
 - **Depends on:** M20, M22 (and builds on M4, M7, M9, M11)
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Acceptance criteria:**
   - `model_pricing` becomes **append-only versioned**: immutable rows with a
     surrogate id + `EffectiveFrom`; **no upsert**. The repository exposes

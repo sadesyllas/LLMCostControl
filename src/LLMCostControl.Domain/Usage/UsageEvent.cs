@@ -44,8 +44,8 @@ public class UsageEvent
     /// <summary>Tokens written to the provider cache.</summary>
     public long TokensCacheWrite { get; init; }
 
-    /// <summary>Snapshot of the unit prices used to compute the cost.</summary>
-    public required TokenPrices UnitPrices { get; init; }
+    /// <summary>The ID of the model pricing version used to price this capture (§9.4, M23).</summary>
+    public Guid PricingVersionId { get; init; }
 
     /// <summary>The computed cost amount.</summary>
     public decimal CostAmount { get; init; }
@@ -72,7 +72,7 @@ public class UsageEvent
         long tokensOutput,
         long tokensCacheRead,
         long tokensCacheWrite,
-        TokenPrices unitPrices,
+        Guid pricingVersionId,
         decimal costAmount,
         string costCurrency,
         IReadOnlyCollection<UsageEventPeriodAccrual> periodAccruals,
@@ -98,6 +98,11 @@ public class UsageEvent
             throw new ArgumentException("Token counts cannot be negative.");
         }
 
+        if (pricingVersionId == Guid.Empty)
+        {
+            throw new ArgumentException("Pricing version ID must be a valid non-empty GUID.", nameof(pricingVersionId));
+        }
+
         return new UsageEvent
         {
             EventId = eventId,
@@ -108,7 +113,7 @@ public class UsageEvent
             TokensOutput = tokensOutput,
             TokensCacheRead = tokensCacheRead,
             TokensCacheWrite = tokensCacheWrite,
-            UnitPrices = unitPrices,
+            PricingVersionId = pricingVersionId,
             CostAmount = costAmount,
             CostCurrency = costCurrency,
             PeriodAccruals = periodAccruals.ToList(),

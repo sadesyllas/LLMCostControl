@@ -14,7 +14,7 @@ public class AdapterFallbackTests : RepositoryTestBase
             Provider.OpenAI,
             "gpt-4o",
             TokenPrices.Create(2.5m, 10m, 1.25m));
-        await pricingRepo.UpsertAsync(seeded);
+        await pricingRepo.InsertNewVersionAsync(seeded);
 
         using var handler = StubHttpMessageHandler.Throwing();
         using var client = new HttpClient(handler);
@@ -38,7 +38,7 @@ public class AdapterFallbackTests : RepositoryTestBase
             Provider.Anthropic,
             "claude-3-5-sonnet",
             TokenPrices.Create(3m, 15m, 0.3m, 3.75m));
-        await pricingRepo.UpsertAsync(seeded);
+        await pricingRepo.InsertNewVersionAsync(seeded);
 
         using var handler = StubHttpMessageHandler.Throwing();
         using var client = new HttpClient(handler);
@@ -62,7 +62,7 @@ public class AdapterFallbackTests : RepositoryTestBase
             Provider.Google,
             "gemini-1.5-pro",
             TokenPrices.Create(1.25m, 5m, null, null));
-        await pricingRepo.UpsertAsync(seeded);
+        await pricingRepo.InsertNewVersionAsync(seeded);
 
         using var handler = StubHttpMessageHandler.Throwing();
         using var client = new HttpClient(handler);
@@ -86,7 +86,7 @@ public class AdapterFallbackTests : RepositoryTestBase
             Provider.AzureFoundry,
             "gpt-4o",
             TokenPrices.Create(2.5m, 10m, 1.25m));
-        await pricingRepo.UpsertAsync(seeded);
+        await pricingRepo.InsertNewVersionAsync(seeded);
 
         using var handler = StubHttpMessageHandler.Throwing();
         using var client = new HttpClient(handler);
@@ -110,7 +110,7 @@ public class AdapterFallbackTests : RepositoryTestBase
             Provider.VertexAI,
             "gemini-1.5-pro",
             TokenPrices.Create(1.25m, 5m, null, null));
-        await pricingRepo.UpsertAsync(seeded);
+        await pricingRepo.InsertNewVersionAsync(seeded);
 
         using var handler = StubHttpMessageHandler.Throwing();
         using var client = new HttpClient(handler);
@@ -144,9 +144,9 @@ public class AdapterFallbackTests : RepositoryTestBase
     public async Task Fallback_sets_staleSince_on_all_returned_entries()
     {
         var pricingRepo = new ModelPricingRepository(Db);
-        await pricingRepo.UpsertAsync(ModelPricing.Create(
+        await pricingRepo.InsertNewVersionAsync(ModelPricing.Create(
             Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m)));
-        await pricingRepo.UpsertAsync(ModelPricing.Create(
+        await pricingRepo.InsertNewVersionAsync(ModelPricing.Create(
             Provider.OpenAI, "gpt-4o-mini", TokenPrices.Create(0.15m, 0.6m)));
 
         using var handler = StubHttpMessageHandler.Throwing();

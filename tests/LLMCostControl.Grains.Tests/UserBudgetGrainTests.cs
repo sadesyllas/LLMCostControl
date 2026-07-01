@@ -219,9 +219,9 @@ public class UserBudgetGrainTests : GrainTestBase
         var groupId = Guid.NewGuid();
         BudgetStore.SetBudget("audit@example.com",
             EffectiveBudget.FromGroup(Usd(500m), groupId));
-        Store.SetPricing(
-            ModelPricing.Create(Provider.OpenAI, "gpt-4o",
-                TokenPrices.Create(2.5m, 10m, 1.25m)));
+        var pricing = ModelPricing.Create(Provider.OpenAI, "gpt-4o",
+            TokenPrices.Create(2.5m, 10m, 1.25m));
+        Store.SetPricing(pricing);
 
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("audit@example.com");
         var result = await grain.CaptureUsageAsync(new UsageCaptureRequest
@@ -246,9 +246,7 @@ public class UserBudgetGrainTests : GrainTestBase
         evt.TokensOutput.Should().Be(500);
         evt.TokensCacheRead.Should().Be(200);
         evt.TokensCacheWrite.Should().Be(0);
-        evt.UnitPrices.Input.Should().Be(2.5m);
-        evt.UnitPrices.Output.Should().Be(10m);
-        evt.UnitPrices.CacheRead.Should().Be(1.25m);
+        evt.PricingVersionId.Should().Be(pricing.Id);
         evt.CostAmount.Should().Be(result.CostAmount);
         evt.CostCurrency.Should().Be("USD");
         accrual.RunningSpendAfter.Should().Be(result.RunningSpendAmount);
@@ -531,7 +529,8 @@ public class UserBudgetGrainTests : GrainTestBase
         {
             Input = 2.5m,
             Output = 10m,
-            Currency = "USD"
+            Currency = "USD",
+            PricingVersionId = Guid.NewGuid()
         });
 
         var grainFactory = NSubstitute.Substitute.For<IGrainFactory>();

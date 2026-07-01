@@ -216,7 +216,7 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             tokensOutput: request.TokensOutput,
             tokensCacheRead: request.TokensCacheRead,
             tokensCacheWrite: request.TokensCacheWrite,
-            unitPrices: TokenPrices.Create(pricing.Input, pricing.Output, pricing.CacheRead, pricing.CacheWrite),
+            pricingVersionId: pricing.PricingVersionId,
             costAmount: cost,
             costCurrency: currency,
             periodAccruals: accruals,
