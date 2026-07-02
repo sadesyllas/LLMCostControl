@@ -1,10 +1,10 @@
 using LLMCostControl.Domain.Budgets;
 using LLMCostControl.Domain.Common;
 using LLMCostControl.Domain.Pricing;
+using LLMCostControl.Domain.Usage;
 using LLMCostControl.Grains.Abstractions;
 using LLMCostControl.Grains.Implementations;
 using LLMCostControl.Grains.Options;
-using LLMCostControl.Grains.State;
 using LLMCostControl.Grains.Storage;
 using NSubstitute;
 
@@ -480,134 +480,79 @@ public class UserBudgetGrainTests : GrainTestBase
     }
 
     [Fact]
-    public async Task CaptureUsageAsync_deactivates_grain_on_write_state_failure()
+    public async Task Grain_reconstructs_running_spend_from_ledger_on_activation()
     {
-        // Arrange
-        var budgetStore = NSubstitute.Substitute.For<IBudgetStore>();
-        var usageEventStore = NSubstitute.Substitute.For<IUsageEventStore>();
-        var storage = NSubstitute.Substitute.For<IPersistentState<UserBudgetGrainState>>();
-        var grainContext = NSubstitute.Substitute.For<IGrainContext>();
-        var grainRuntime = NSubstitute.Substitute.For<IGrainRuntime>();
-        var timeProvider = System.TimeProvider.System;
-        
-        var options = new BudgetGrainOptions
-        {
-            BudgetCacheTtl = TimeSpan.FromSeconds(1),
-            AllowNonBudgetedUsers = false
-        };
+        var caller = "reconstruct-activation@example.com";
+        var callerId = CallerId.From(caller);
 
-        var currentPeriod = BudgetPeriod.FromDate(timeProvider.GetUtcNow());
-        var state = new UserBudgetGrainState
-        {
-            PeriodYear = currentPeriod.Year,
-            PeriodMonth = currentPeriod.Month,
-            RunningSpendCurrency = "USD"
-        };
-        storage.State.Returns(state);
-        storage.WriteStateAsync().Returns(x => Task.FromException(new InvalidOperationException("DB error")));
+        // Seed a monthly budget
+        BudgetStore.SetBudget(caller, EffectiveBudget.FromUserOverride(Usd(100m)));
 
-        var providerInference = new ProviderInferenceMap(new Dictionary<string, string> { ["gpt"] = "openai" });
+        // Setup model pricing
+        var pricing = ModelPricing.Create(Provider.OpenAI, "gpt-4o-recon-activation", TokenPrices.Create(10m, 20m));
+        Store.SetPricing(pricing);
 
-        var grain = new UserBudgetGrain(
-            budgetStore,
-            usageEventStore,
-            options,
-            timeProvider,
-            providerInference,
-            storage);
+        // Clear existing events in store
+        UsageEventStore.Reset();
 
-        // Inject the mocked grain context and grain runtime via reflection so DeactivateOnIdle() doesn't throw NullReferenceException
-        var grainType = typeof(Grain);
-        var contextField = grainType.GetField("<GrainContext>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        contextField?.SetValue(grain, grainContext);
-        var runtimeField = grainType.GetField("<Runtime>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        runtimeField?.SetValue(grain, grainRuntime);
+        var now = TimeProvider.GetUtcNow();
+        var currentMonthly = BudgetPeriod.FromDate(now, BudgetPeriodType.Monthly);
 
-        // Mock the GrainFactory lookups via the ServiceProvider on GrainContext
-        var pricingGrain = NSubstitute.Substitute.For<IPricingGrain>();
-        pricingGrain.GetPricingAsync().Returns(new PricingResult
-        {
-            Input = 2.5m,
-            Output = 10m,
-            Currency = "USD",
-            PricingVersionId = Guid.NewGuid()
-        });
+        // Pre-populate ledger (2 events of $1.50 each)
+        var acc1 = UsageEventPeriodAccrual.Create(
+            "req-1", BudgetPeriodType.Monthly, currentMonthly.Key, null, BudgetSource.UserOverride, Usd(100m), 1.50m);
+        var evt1 = UsageEvent.Create(
+            "req-1", callerId, "gpt-4o-recon-activation", Provider.OpenAI, 50000, 50000, 0, 0, pricing.Id, 1.50m, "USD", new[] { acc1 }, now.AddMinutes(-10));
 
-        var grainFactory = NSubstitute.Substitute.For<IGrainFactory>();
-        grainFactory.GetGrain<IPricingGrain>(ProviderResolver.Key(Provider.OpenAI, "gpt-4"), Arg.Any<string?>()).Returns(pricingGrain);
+        var acc2 = UsageEventPeriodAccrual.Create(
+            "req-2", BudgetPeriodType.Monthly, currentMonthly.Key, null, BudgetSource.UserOverride, Usd(100m), 3.00m);
+        var evt2 = UsageEvent.Create(
+            "req-2", callerId, "gpt-4o-recon-activation", Provider.OpenAI, 50000, 50000, 0, 0, pricing.Id, 1.50m, "USD", new[] { acc2 }, now.AddMinutes(-5));
 
-        var serviceProvider = NSubstitute.Substitute.For<IServiceProvider>();
-        serviceProvider.GetService(typeof(IGrainFactory)).Returns(grainFactory);
-        serviceProvider.GetService(typeof(IGrainRuntime)).Returns(grainRuntime);
+        await UsageEventStore.AppendAsync(evt1);
+        await UsageEventStore.AppendAsync(evt2);
 
-        grainRuntime.GrainFactory.Returns(grainFactory);
+        // Get the grain. On activation, it should sum the ledger (1.50 + 1.50 = 3.00).
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>(caller);
+        var checkResult = await grain.CheckBudgetAsync();
 
-        grainContext.ActivationServices.Returns(serviceProvider);
-
-        // Mock GetPrimaryKeyString via GrainContext.GrainId.Key
-        var grainId = Orleans.Runtime.GrainId.Parse("UserBudgetGrain/test-user@example.com");
-        grainContext.GrainId.Returns(grainId);
-
-        // Mock budgetStore.ResolveAsync to return a valid override
-        budgetStore.ResolveAsync(Arg.Any<CallerId>(), Arg.Any<BudgetPeriodType>())
-            .Returns(EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
-
-        var request = new UsageCaptureRequest
-        {
-            Model = "gpt-4",
-            TokensInput = 1000,
-            TokensOutput = 500,
-            RequestId = "test-req-fail"
-        };
-
-        // Act
-        Func<Task> action = () => grain.CaptureUsageAsync(request);
-
-        // Assert
-        await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("DB error");
-        grainRuntime.Received(1).DeactivateOnIdle(grainContext);
+        checkResult.Allowed.Should().BeTrue();
+        checkResult.Budgets.Should().ContainSingle();
+        checkResult.Budgets[0].RunningSpendAmount.Should().Be(3.00m);
+        checkResult.Budgets[0].RemainingAmount.Should().Be(97.00m);
     }
 
     [Fact]
-    public void TestDeactivateOnIdleDirectly()
+    public async Task CaptureUsageAsync_is_idempotent_and_does_not_double_accrue()
     {
-        var budgetStore = NSubstitute.Substitute.For<IBudgetStore>();
-        var usageEventStore = NSubstitute.Substitute.For<IUsageEventStore>();
-        var storage = NSubstitute.Substitute.For<IPersistentState<UserBudgetGrainState>>();
-        var grainContext = NSubstitute.Substitute.For<IGrainContext>();
-        var grainRuntime = NSubstitute.Substitute.For<IGrainRuntime>();
-        var timeProvider = System.TimeProvider.System;
-        
-        var options = new BudgetGrainOptions();
-        var providerInference = new ProviderInferenceMap(new Dictionary<string, string> { ["gpt"] = "openai" });
-        var grain = new UserBudgetGrain(
-            budgetStore,
-            usageEventStore,
-            options,
-            timeProvider,
-            providerInference,
-            storage);
+        var caller = "idempotent-capture@example.com";
+        BudgetStore.SetBudget(caller, EffectiveBudget.FromUserOverride(Usd(100m)));
 
-        var grainType = typeof(Grain);
-        var contextField = grainType.GetField("<GrainContext>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        contextField?.SetValue(grain, grainContext);
-        var runtimeField = grainType.GetField("<Runtime>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        runtimeField?.SetValue(grain, grainRuntime);
+        var pricing = ModelPricing.Create(Provider.OpenAI, "gpt-4o-idempotent", TokenPrices.Create(10m, 20m));
+        Store.SetPricing(pricing);
 
-        // Let's print properties via reflection to see if they are set correctly
-        var actualContext = grain.GrainContext;
-        var actualRuntime = grainType.GetProperty("Runtime", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(grain);
-        
-        if (actualRuntime != grainRuntime)
+        UsageEventStore.Reset();
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>(caller);
+
+        // Capture first request
+        var req = new UsageCaptureRequest
         {
-            throw new Exception($"Runtime not equal! Expected: {grainRuntime}, got: {actualRuntime}");
-        }
+            RequestId = "idempotent-req-1",
+            Model = "gpt-4o-idempotent",
+            Provider = "openai",
+            TokensInput = 50000,
+            TokensOutput = 50000
+        };
 
-        // Call DeactivateOnIdle
-        var method = grainType.GetMethod("DeactivateOnIdle", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        method?.Invoke(grain, null);
+        var res1 = await grain.CaptureUsageAsync(req);
+        res1.CostAmount.Should().Be(1.50m);
+        res1.Budgets[0].RunningSpendAmount.Should().Be(1.50m);
 
-        grainRuntime.Received(1).DeactivateOnIdle(grainContext);
+        // Capture duplicate request: spend should NOT increment, cost remains original
+        var res2 = await grain.CaptureUsageAsync(req);
+        res2.CostAmount.Should().Be(1.50m);
+        res2.Budgets[0].RunningSpendAmount.Should().Be(1.50m, "duplicate request should not double accrue.");
     }
 
     [Fact]

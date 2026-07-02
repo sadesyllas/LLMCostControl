@@ -34,7 +34,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M21 | Weekly budget period (multi-period budgeting) | §6.2.1, §6.2.2, §7, §9.4, §10.2 | M20 | [x] | [x] |
 | M22 | Additional providers (Azure AI Foundry, Vertex AI) | §6.2.3, §8.1, §8.2, §8.5 | M20 | [x] | [x] |
 | M23 | Pricing version history (insert-on-change) + usage references version | §8.7, §9.2, §9.4 | M20, M22 | [x] | [x] |
-| M24 | Running spend as a ledger-derived projection (drop grain-state persistence) | §6.2.2, §9.1, §9.3, §9.4 | M21, M23 | [ ] | [ ] |
+| M24 | Running spend as a ledger-derived projection (drop grain-state persistence) | §6.2.2, §9.1, §9.3, §9.4 | M21, M23 | [x] | [x] |
 
 > **Iteration 2 (M20–M24)** is owner-authorized scope added after M19. The
 > coding-standard refactor (M20) lands first so all subsequent code conforms;
@@ -533,7 +533,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 - **Spec ref:** §6.2.2, §9.1, §9.3, §9.4 (resolved Q9)
 - **Depends on:** M21 (per-period accrual child rows), M23 (pricing version); builds on M11
-- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Status:** [x] Done · **Done?** [x] · **Tested?** [x]
 - **Rationale:** the M20–M23 review found that capture persists running spend to
   Orleans grain state **before** appending the audit row and ignores the append
   result, leaving a double-accrual window on crash/reactivation (REVIEW.md M21-2),
