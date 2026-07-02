@@ -98,14 +98,6 @@ public class BudgetResolutionTests : RepositoryTestBase
         await new GroupRepository(Db).AddAsync(group);
         await new GroupMembershipRepository(Db).AddAsync(GroupMembership.Create(group.Id, caller));
 
-        // Seed both Weekly and Monthly budget overrides
-        var monthlyOverride = UserBudgetOverride.Create(caller, new Money(200m, "USD"), BudgetPeriodType.Monthly);
-        var weeklyOverride = UserBudgetOverride.Create(caller, new Money(50m, "USD"), BudgetPeriodType.Weekly);
-
-        var overrideRepo = new UserBudgetOverrideRepository(Db);
-        await overrideRepo.UpsertAsync(monthlyOverride);
-        await overrideRepo.UpsertAsync(weeklyOverride);
-
         // Seed both Weekly and Monthly group budgets
         var groupBudgetRepo = new GroupBudgetRepository(Db);
         await groupBudgetRepo.UpsertAsync(GroupBudget.Create(group.Id, new Money(1000m, "USD"), BudgetPeriodType.Monthly));
@@ -113,14 +105,16 @@ public class BudgetResolutionTests : RepositoryTestBase
 
         var resolutionRepo = new BudgetResolutionRepository(Db);
 
-        // Act & Assert Monthly resolution (should resolve user override of monthly type)
+        // Act & Assert Monthly resolution (should resolve group budget of monthly type)
         var monthlyResult = await resolutionRepo.ResolveAsync(caller, BudgetPeriodType.Monthly);
-        monthlyResult.Source.Should().Be(BudgetSource.UserOverride);
-        monthlyResult.Amount.Should().Be(new Money(200m, "USD"));
+        monthlyResult.Source.Should().Be(BudgetSource.Group);
+        monthlyResult.Amount.Should().Be(new Money(1000m, "USD"));
+        monthlyResult.GroupId.Should().Be(group.Id);
 
-        // Act & Assert Weekly resolution (should resolve user override of weekly type)
+        // Act & Assert Weekly resolution (should resolve group budget of weekly type)
         var weeklyResult = await resolutionRepo.ResolveAsync(caller, BudgetPeriodType.Weekly);
-        weeklyResult.Source.Should().Be(BudgetSource.UserOverride);
-        weeklyResult.Amount.Should().Be(new Money(50m, "USD"));
+        weeklyResult.Source.Should().Be(BudgetSource.Group);
+        weeklyResult.Amount.Should().Be(new Money(250m, "USD"));
+        weeklyResult.GroupId.Should().Be(group.Id);
     }
 }
