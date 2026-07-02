@@ -20,10 +20,4 @@ public interface IUserBudgetGrain : IGrainWithStringKey
     /// Idempotent via RequestId inside the request when supplied.
     /// </summary>
     Task<UsageCaptureResult> CaptureUsageAsync(UsageCaptureRequest request);
-
-    /// <summary>
-    /// Forcefully deactivates the grain activation on idle.
-    /// Used primarily for testing reactivation, ledger reconstruction, and cross-activation idempotency.
-    /// </summary>
-    Task DeactivateOnIdleAsync();
 }

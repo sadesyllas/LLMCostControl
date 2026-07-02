@@ -583,7 +583,7 @@ public class UserBudgetGrainTests : GrainTestBase
         res1.Budgets[0].RunningSpendAmount.Should().Be(1.50m);
 
         // Force deactivation
-        await grain.DeactivateOnIdleAsync();
+        await GrainFactory.GetGrain<ITestUserBudgetGrain>(caller).DeactivateOnIdleAsync();
 
         // Access the grain again. On reactivation, it should rebuild the spend to $1.50 (no double counting, no loss).
         var checkResult = await grain.CheckBudgetAsync();
@@ -619,7 +619,7 @@ public class UserBudgetGrainTests : GrainTestBase
         res1.Budgets[0].RunningSpendAmount.Should().Be(1.50m);
 
         // Force deactivation
-        await grain.DeactivateOnIdleAsync();
+        await GrainFactory.GetGrain<ITestUserBudgetGrain>(caller).DeactivateOnIdleAsync();
 
         // Capture duplicate request across reactivation: should not double accrue and return original cost
         var res2 = await grain.CaptureUsageAsync(req);

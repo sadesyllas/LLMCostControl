@@ -21,7 +21,7 @@ namespace LLMCostControl.Grains.Implementations;
 /// the running spend from the ledger on activation/rollover, and
 /// answers check and capture calls (§7, §9.1, §9.3, §9.4).
 /// </summary>
-public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
+public sealed class UserBudgetGrain : Grain, IUserBudgetGrain, ITestUserBudgetGrain
 {
     private const decimal TokensPerMillion = 1_000_000m;
 
