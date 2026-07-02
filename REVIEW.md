@@ -21,6 +21,15 @@ are concentrated in **test coverage, EF migration/snapshot hygiene, and a few
 spec-contract gaps**. Findings must be addressed (or explicitly risk-accepted)
 before these milestones are `Reviewed`.
 
+> **Scope note — one finding was promoted to a milestone.** The running-spend
+> double-accrual issue (formerly **M21-2**) and the accrual-to-unconfigured-periods
+> issue (formerly **M21-3**) require a **spec change** (running spend becomes a
+> ledger-derived projection, resolved Q9). They have been moved out of this review
+> into new milestone **M24** with `SPEC.md` §9.1/§9.3/§9.4/§6.2.2 updated
+> accordingly. Everything remaining in this file is **non-spec-affecting** code /
+> test / hygiene work: the coder addresses these as review fixes, and separately
+> implements M24 against the updated spec.
+
 ---
 
 ## Cross-cutting (affects M21 & M23)
@@ -122,35 +131,14 @@ zero-budget cut-off. The serious gaps are in testing and accrual ordering.
   weekly-driven deny; add a telemetry test asserting `budget_period`. Only then
   re-mark `Tested`.
 
-### M21-2 — [Medium] Capture persists the accrual to state *before* writing the audit row and ignores `AppendAsync`'s result → double-accrual window
-- **Where:** `src/LLMCostControl.Grains/Implementations/UserBudgetGrain.cs`:
-  accrue + `WriteStateAsync()` at `:163-176`, audit `AppendAsync(...)` at `:225`
-  (return value discarded); idempotency guard is an up-front `GetByIdAsync` at
-  `:106-113`.
-- **Problem:** §6.2.2/§9.4 require that a duplicate capture "must not
-  double-accrue." Running spend is persisted before the audit row exists, so if the
-  grain crashes/reactivates between `:176` and `:225` (or the two duplicate calls
-  land on different activations), the retry's `GetByIdAsync` finds no event and
-  **re-accrues** — spend is counted twice while only one audit row eventually
-  exists. The single-activation happy path is safe (and tested), but the ordering
-  is the reverse of the safe one.
-- **Fix:** Append the audit row **first** (its `EventId` PK is the idempotency key),
-  and accrue/persist state only on a successful, non-duplicate append — or wrap
-  accrual + append in one transaction. At minimum, honor the `bool` returned by
-  `AppendAsync` and skip/rollback the accrual when it indicates a duplicate.
-
-### M21-3 — [Low] Cost accrues to unconfigured period dimensions
-- **Where:** `UserBudgetGrain.cs:163-169` updates both `MonthlyRunningSpend` and
-  `WeeklyRunningSpend` unconditionally, regardless of `monthly.HasBudget` /
-  `weekly.HasBudget`.
-- **Problem:** §7 says accrue "to every period type **in the caller's
-  effective-budget set**." Invisible today (child rows, response, and gating are all
-  gated on `HasBudget`), but if a budget for a previously-unconfigured period type
-  is added mid-period, the pre-accrued running spend is immediately counted against
-  the new budget until that period rolls over.
-- **Fix:** Accrue to a dimension only when its `EffectiveBudget.HasBudget`, or reset
-  a dimension's running spend when a budget first appears for it. Add a
-  "budget added mid-period on a previously-unbudgeted type" test.
+### M21-2 & M21-3 — MOVED to milestone M24 (spec-affecting)
+- The capture double-accrual window (accrue+persist state *before* appending the
+  audit row, ignoring `AppendAsync`'s result — `UserBudgetGrain.cs:163-176,225`)
+  and the accrual-to-unconfigured-dimensions issue (`:163-169`) are **no longer
+  fixed as review items**. The owner-chosen fix is architectural (option A,
+  resolved Q9): running spend becomes a **ledger-derived projection** with
+  append-first capture, which eliminates both. See `SPEC.md` §9.1/§9.3/§9.4/§6.2.2
+  and **`MILESTONES.md` M24**. Nothing to do here — they are tracked by M24.
 
 ---
 
@@ -300,8 +288,12 @@ is `Ignore`d in EF). Findings below.
    `Done/Tested/Reviewed` status.
 2. **M22-1** (refresh job not wired) and **M23-2** (lossy legacy migration) — real
    functional/data-integrity gaps.
-3. **M21-2, M23-1, M23-3, M22-2** — correctness/spec-contract.
+3. **M23-1, M23-3, M22-2** — correctness/spec-contract.
 4. Remaining Lows as capacity allows.
 
+Separately (not a review item): implement **M24** against the updated spec — it is
+the home for the former M21-2/M21-3.
+
 `Reviewed` stays **un-ticked** for M20–M23 until the above are addressed or
-explicitly risk-accepted. Delete this file once they are closed.
+explicitly risk-accepted. Delete this file once they are closed (and once M24 is
+itself built + reviewed).

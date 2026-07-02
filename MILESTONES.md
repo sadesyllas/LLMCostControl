@@ -34,10 +34,15 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 | M21 | Weekly budget period (multi-period budgeting) | §6.2.1, §6.2.2, §7, §9.4, §10.2 | M20 | [x] | [x] |
 | M22 | Additional providers (Azure AI Foundry, Vertex AI) | §6.2.3, §8.1, §8.2, §8.5 | M20 | [x] | [x] |
 | M23 | Pricing version history (insert-on-change) + usage references version | §8.7, §9.2, §9.4 | M20, M22 | [x] | [x] |
+| M24 | Running spend as a ledger-derived projection (drop grain-state persistence) | §6.2.2, §9.1, §9.3, §9.4 | M21, M23 | [ ] | [ ] |
 
-> **Iteration 2 (M20–M23)** is owner-authorized scope added after M19. The
+> **Iteration 2 (M20–M24)** is owner-authorized scope added after M19. The
 > coding-standard refactor (M20) lands first so all subsequent code conforms;
-> M21–M23 then build on it in order.
+> M21–M23 then build on it in order. **M24** is a follow-on architectural change
+> (resolved Q9) arising from the M20–M23 review: it makes the append-only ledger
+> the single source of truth for running spend and supersedes review findings
+> M21-2 (capture ordering / double-accrual) and M21-3 (accrual to unconfigured
+> periods).
 
 ---
 
@@ -523,3 +528,52 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
     multiple activations).
   - Admin upload inserts a version on change and is a no-op when unchanged.
   - Migration applies from scratch and is idempotent (Testcontainers Postgres).
+
+## M24 — Running spend as a ledger-derived projection (drop grain-state persistence)
+
+- **Spec ref:** §6.2.2, §9.1, §9.3, §9.4 (resolved Q9)
+- **Depends on:** M21 (per-period accrual child rows), M23 (pricing version); builds on M11
+- **Status:** [ ] Not started · **Done?** [ ] · **Tested?** [ ]
+- **Rationale:** the M20–M23 review found that capture persists running spend to
+  Orleans grain state **before** appending the audit row and ignores the append
+  result, leaving a double-accrual window on crash/reactivation (REVIEW.md M21-2),
+  and that spend accrues to unconfigured period dimensions (REVIEW.md M21-3). Per
+  the owner's decision (option A, resolved Q9) the fix is architectural: make the
+  append-only ledger the single source of truth and derive running spend from it,
+  rather than reorder a dual write.
+- **Acceptance criteria:**
+  - `UserBudgetGrain` no longer persists running spend as Orleans grain state:
+    the running-spend fields are removed from the persisted grain state (and, if
+    no persisted state remains, the `[PersistentState]`/Orleans storage dependency
+    for this grain is removed). Any now-unused Orleans grain-storage provider
+    registration is removed or explicitly documented as retained.
+  - On **activation**, the grain **reconstructs** the current running spend for
+    **each configured period type** by summing the append-only `usage_events`
+    ledger (§9.4) over the current period instance, and keeps it warm in memory for
+    the activation's lifetime (§9.1).
+  - Running spend is derived **only** from the per-configured-dimension accrual
+    rows / ledger, so an unconfigured period type has no running spend — this
+    **supersedes M21-3** (no accrual to unconfigured dimensions).
+  - **Capture is append-first (§9.3):** the grain appends the `usage_events` row
+    (+ per-period accrual child rows) — idempotent on the `event_id` primary key —
+    **before** updating its in-memory projection. A duplicate `requestId` neither
+    inserts a second row nor increments spend; a crash/reactivation between append
+    and increment is self-healing (spend recomputed from the ledger). This
+    **supersedes M21-2** (double-accrual window).
+  - Behaviour visible to the API is unchanged: check/capture still return the
+    per-period `budgets` array with correct running spend / remaining (§6.2.1,
+    §6.2.2), and the per-period AND-deny / zero-cut-off / `AllowNonBudgetedUsers`
+    semantics (§7) are preserved.
+- **Tests:**
+  - On a fresh activation with pre-seeded ledger rows, running spend for each
+    period type equals the ledger sum for the current period instance.
+  - Capture appends **before** incrementing; simulating a fresh activation (lost
+    in-memory state) after a capture yields the correct spend rebuilt from the
+    ledger — **no double count**.
+  - Duplicate `requestId`: no second ledger row and no double increment, including
+    a **cross-activation** variant (deactivate between the two calls).
+  - Period rollover: the projection resets for the rolled-over dimension by
+    recomputing against the new period instance, independently per type.
+  - Multi-period: running spend for both weekly and monthly is rebuilt correctly
+    from the ledger; an unconfigured period type contributes nothing.
+  - Regression: the existing M21 check/capture/idempotency suites stay green.
