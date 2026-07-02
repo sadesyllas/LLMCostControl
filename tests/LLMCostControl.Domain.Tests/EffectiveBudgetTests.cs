@@ -89,4 +89,42 @@ public class EffectiveBudgetTests
         result.Amount!.IsZero.Should().BeTrue();
         result.Source.Should().Be(BudgetSource.Group);
     }
+
+    [Fact]
+    public void Resolve_returns_weekly_override_when_present()
+    {
+        var callerId = CallerId.From("alice@example.com");
+        var override_ = UserBudgetOverride.Create(callerId, new Money(20m, "USD"), BudgetPeriodType.Weekly);
+        var groupBudgets = new[]
+        {
+            (Guid.NewGuid(), GroupBudget.Create(Guid.NewGuid(), new Money(10m, "USD"), BudgetPeriodType.Weekly)),
+        };
+
+        var result = EffectiveBudget.Resolve(override_, groupBudgets, BudgetPeriodType.Weekly);
+
+        result.Source.Should().Be(BudgetSource.UserOverride);
+        result.Amount.Should().Be(new Money(20m, "USD"));
+        result.GroupId.Should().BeNull();
+        result.PeriodType.Should().Be(BudgetPeriodType.Weekly);
+    }
+
+    [Fact]
+    public void Resolve_returns_largest_weekly_group_budget_when_no_override()
+    {
+        var smallGroupId = Guid.NewGuid();
+        var bigGroupId = Guid.NewGuid();
+        var groupBudgets = new[]
+        {
+            (smallGroupId, GroupBudget.Create(smallGroupId, new Money(5m, "USD"), BudgetPeriodType.Weekly)),
+            (bigGroupId, GroupBudget.Create(bigGroupId, new Money(15m, "USD"), BudgetPeriodType.Weekly)),
+            (Guid.NewGuid(), GroupBudget.Create(Guid.NewGuid(), new Money(8m, "USD"), BudgetPeriodType.Weekly)),
+        };
+
+        var result = EffectiveBudget.Resolve(null, groupBudgets, BudgetPeriodType.Weekly);
+
+        result.Source.Should().Be(BudgetSource.Group);
+        result.Amount.Should().Be(new Money(15m, "USD"));
+        result.GroupId.Should().Be(bigGroupId);
+        result.PeriodType.Should().Be(BudgetPeriodType.Weekly);
+    }
 }

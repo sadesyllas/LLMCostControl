@@ -248,10 +248,12 @@ public sealed class TelemetryTaggingTests : IClassFixture<TelemetryWebAppFactory
         }
 
         relevantActivities.Should().HaveCount(2, "because we expect exactly one check and one capture request for this caller");
+        var expectedPeriodStr = budgetSourceType == "None" ? "None" : "Monthly";
         foreach (var act in relevantActivities)
         {
             act.Tags.Should().Contain(t => t.Key == "effective_group" && (string?)t.Value == expectedGroupStr);
             act.Tags.Should().Contain(t => t.Key == "budget_source" && (string?)t.Value == budgetSourceType);
+            act.Tags.Should().Contain(t => t.Key == "budget_period" && (string?)t.Value == expectedPeriodStr);
         }
 
         // Verify metrics (exposing at least llm_budget_checks_total and llm_usage_captures_total)
@@ -268,10 +270,12 @@ public sealed class TelemetryTaggingTests : IClassFixture<TelemetryWebAppFactory
         checkMeasurements.Should().NotBeEmpty();
         checkMeasurements.First().Tags.Should().ContainKey("effective_group").WhoseValue.Should().Be(expectedGroupStr);
         checkMeasurements.First().Tags.Should().ContainKey("budget_source").WhoseValue.Should().Be(budgetSourceType);
+        checkMeasurements.First().Tags.Should().ContainKey("budget_period").WhoseValue.Should().Be(expectedPeriodStr);
 
         captureMeasurements.Should().NotBeEmpty();
         captureMeasurements.First().Tags.Should().ContainKey("effective_group").WhoseValue.Should().Be(expectedGroupStr);
         captureMeasurements.First().Tags.Should().ContainKey("budget_source").WhoseValue.Should().Be(budgetSourceType);
+        captureMeasurements.First().Tags.Should().ContainKey("budget_period").WhoseValue.Should().Be(expectedPeriodStr);
 
         // Verify logs (Serilog LogContext)
         lock (MemorySink.Events)
@@ -289,6 +293,9 @@ public sealed class TelemetryTaggingTests : IClassFixture<TelemetryWebAppFactory
 
                 log.Properties.Should().ContainKey("budget_source");
                 log.Properties["budget_source"].ToString().Should().Contain(budgetSourceType);
+
+                log.Properties.Should().ContainKey("budget_period");
+                log.Properties["budget_period"].ToString().Should().Contain(expectedPeriodStr);
             }
         }
     }

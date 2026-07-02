@@ -219,14 +219,14 @@ public class UserBudgetGrainTests : GrainTestBase
         var groupId = Guid.NewGuid();
         BudgetStore.SetBudget("audit@example.com",
             EffectiveBudget.FromGroup(Usd(500m), groupId));
-        var pricing = ModelPricing.Create(Provider.OpenAI, "gpt-4o",
+        var pricing = ModelPricing.Create(Provider.OpenAI, "gpt-4o-audit",
             TokenPrices.Create(2.5m, 10m, 1.25m));
         Store.SetPricing(pricing);
 
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("audit@example.com");
         var result = await grain.CaptureUsageAsync(new UsageCaptureRequest
         {
-            Model = "gpt-4o",
+            Model = "gpt-4o-audit",
             TokensInput = 1000,
             TokensOutput = 500,
             TokensCacheRead = 200,
@@ -241,7 +241,7 @@ public class UserBudgetGrainTests : GrainTestBase
         var accrual = evt.PeriodAccruals.Single();
         accrual.EffectiveGroupId.Should().Be(groupId);
         accrual.BudgetSource.Should().Be(BudgetSource.Group);
-        evt.Model.Should().Be("gpt-4o");
+        evt.Model.Should().Be("gpt-4o-audit");
         evt.TokensInput.Should().Be(1000);
         evt.TokensOutput.Should().Be(500);
         evt.TokensCacheRead.Should().Be(200);
@@ -415,14 +415,14 @@ public class UserBudgetGrainTests : GrainTestBase
         BudgetStore.SetBudget("reconstruct@example.com",
             EffectiveBudget.FromUserOverride(Usd(100m)));
         Store.SetPricing(
-            ModelPricing.Create(Provider.OpenAI, "gpt-4o",
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o-recon",
                 TokenPrices.Create(2.5m, 10m)));
 
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("reconstruct@example.com");
 
         await grain.CaptureUsageAsync(new UsageCaptureRequest
         {
-            Model = "gpt-4o",
+            Model = "gpt-4o-recon",
             TokensInput = 1000,
             TokensOutput = 500,
             RequestId = "recon-1",
@@ -430,7 +430,7 @@ public class UserBudgetGrainTests : GrainTestBase
 
         await grain.CaptureUsageAsync(new UsageCaptureRequest
         {
-            Model = "gpt-4o",
+            Model = "gpt-4o-recon",
             TokensInput = 2000,
             TokensOutput = 1000,
             RequestId = "recon-2",
@@ -454,14 +454,14 @@ public class UserBudgetGrainTests : GrainTestBase
         BudgetStore.SetBudget("accumulate@example.com",
             EffectiveBudget.FromUserOverride(Usd(100m)));
         Store.SetPricing(
-            ModelPricing.Create(Provider.OpenAI, "gpt-4o",
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o-accum",
                 TokenPrices.Create(2.5m, 10m)));
 
         var grain = GrainFactory.GetGrain<IUserBudgetGrain>("accumulate@example.com");
 
         var first = await grain.CaptureUsageAsync(new UsageCaptureRequest
         {
-            Model = "gpt-4o",
+            Model = "gpt-4o-accum",
             TokensInput = 1000,
             TokensOutput = 500,
             RequestId = "acc-1",
@@ -469,7 +469,7 @@ public class UserBudgetGrainTests : GrainTestBase
 
         var second = await grain.CaptureUsageAsync(new UsageCaptureRequest
         {
-            Model = "gpt-4o",
+            Model = "gpt-4o-accum",
             TokensInput = 1000,
             TokensOutput = 500,
             RequestId = "acc-2",
@@ -728,9 +728,152 @@ public class UserBudgetGrainTests : GrainTestBase
 
         // 2. Advance time by 15 seconds (less than 30s TTL cache, but rolls over to February)
         TimeProvider.SetUtcNow(new DateTimeOffset(2026, 2, 1, 0, 0, 5, TimeSpan.Zero));
-        
+
         // This call should bypass cache because period changed, resolving the new Feb budget ($50)
         var resFeb = await grain.CheckBudgetAsync();
         resFeb.EffectiveBudgetAmount.Should().Be(50m);
+    }
+
+    [Fact]
+    public async Task Multi_period_dual_accrual_and_two_child_rows()
+    {
+        var caller = "multi-accrual@example.com";
+        var monthlyGroup = Guid.NewGuid();
+        var weeklyGroup = Guid.NewGuid();
+
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Monthly, EffectiveBudget.FromGroup(Usd(100m), monthlyGroup));
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Weekly, EffectiveBudget.FromGroup(Usd(50m), weeklyGroup));
+
+        Store.SetPricing(
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o-multi",
+                TokenPrices.Create(2.5m, 10m, 1.25m)));
+
+        // Explicitly set the clock so we have deterministic weekly/monthly keys
+        TimeProvider.SetUtcNow(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero)); // 2026-01, 2026-W01
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>(caller);
+
+        // Capture some usage
+        var result = await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o-multi",
+            TokensInput = 1000000, // Cost = $2.50
+            TokensOutput = 0,
+            RequestId = "multi-req-1"
+        });
+
+        result.CostAmount.Should().Be(2.5m);
+        // Both monthly and weekly budgets should have remaining calculated
+        result.Budgets.Should().HaveCount(2);
+
+        var monthlyCheck = result.Budgets.Single(b => b.Period == "Monthly");
+        monthlyCheck.RemainingAmount.Should().Be(100m - 2.5m);
+        monthlyCheck.PeriodKey.Should().Be("2026-01");
+
+        var weeklyCheck = result.Budgets.Single(b => b.Period == "Weekly");
+        weeklyCheck.RemainingAmount.Should().Be(50m - 2.5m);
+        weeklyCheck.PeriodKey.Should().Be("2026-W01"); // Jan 1 2026 is Thursday, ISO week is 2026-W01
+
+        // Verify two child rows in the audit trail
+        UsageEventStore.Events.Should().ContainSingle();
+        var evt = UsageEventStore.Events.Single();
+        evt.PeriodAccruals.Should().HaveCount(2);
+
+        var monthlyAccrual = evt.PeriodAccruals.Single(a => a.PeriodType == BudgetPeriodType.Monthly);
+        monthlyAccrual.PeriodKey.Should().Be("2026-01");
+        monthlyAccrual.RunningSpendAfter.Should().Be(2.5m);
+        monthlyAccrual.EffectiveGroupId.Should().Be(monthlyGroup);
+        monthlyAccrual.BudgetSource.Should().Be(BudgetSource.Group);
+
+        var weeklyAccrual = evt.PeriodAccruals.Single(a => a.PeriodType == BudgetPeriodType.Weekly);
+        weeklyAccrual.PeriodKey.Should().Be("2026-W01");
+        weeklyAccrual.RunningSpendAfter.Should().Be(2.5m);
+        weeklyAccrual.EffectiveGroupId.Should().Be(weeklyGroup);
+        weeklyAccrual.BudgetSource.Should().Be(BudgetSource.Group);
+    }
+
+    [Fact]
+    public async Task Weekly_rollover_resets_weekly_spend_but_leaves_monthly_spend_untouched()
+    {
+        var caller = "weekly-roll@example.com";
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Monthly, EffectiveBudget.FromUserOverride(Usd(100m), BudgetPeriodType.Monthly));
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Weekly, EffectiveBudget.FromUserOverride(Usd(50m), BudgetPeriodType.Weekly));
+
+        Store.SetPricing(
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o-weekly-roll",
+                TokenPrices.Create(2.5m, 10m, 1.25m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>(caller);
+
+        // 1. Capture in Jan 2026 (Thursday Jan 1)
+        TimeProvider.SetUtcNow(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero)); // 2026-W01
+
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o-weekly-roll",
+            TokensInput = 1000000, // Cost = $2.50
+            TokensOutput = 0,
+            RequestId = "roll-req-1"
+        });
+
+        // 2. Advance past the week boundary (Jan 5 2026 is Monday, start of 2026-W02)
+        // Keep inside January so monthly does not roll over.
+        TimeProvider.SetUtcNow(new DateTimeOffset(2026, 1, 6, 12, 0, 0, TimeSpan.Zero)); // 2026-W02
+
+        // Check budget
+        var checkResult = await grain.CheckBudgetAsync();
+        checkResult.Budgets.Should().HaveCount(2);
+
+        var monthly = checkResult.Budgets.Single(b => b.Period == "Monthly");
+        monthly.PeriodKey.Should().Be("2026-01");
+        monthly.RunningSpendAmount.Should().Be(2.5m, "monthly spend should persist because we are still in January.");
+        monthly.RemainingAmount.Should().Be(97.5m);
+
+        var weekly = checkResult.Budgets.Single(b => b.Period == "Weekly");
+        weekly.PeriodKey.Should().Be("2026-W02");
+        weekly.RunningSpendAmount.Should().Be(0m, "weekly spend should reset to 0 because we rolled over to a new week.");
+        weekly.RemainingAmount.Should().Be(50m);
+    }
+
+    [Fact]
+    public async Task Deny_when_weekly_is_exhausted_but_monthly_is_fine()
+    {
+        var caller = "exhausted-weekly@example.com";
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Monthly, EffectiveBudget.FromUserOverride(Usd(100m), BudgetPeriodType.Monthly));
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Weekly, EffectiveBudget.FromUserOverride(Usd(5m), BudgetPeriodType.Weekly));
+
+        Store.SetPricing(
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o-weekly-exhaust",
+                TokenPrices.Create(10m, 10m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>(caller);
+
+        // Capture $4
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o-weekly-exhaust",
+            TokensInput = 400000, // Cost = $4.00
+            TokensOutput = 0,
+            RequestId = "ex-req-1"
+        });
+
+        // Now checking should be allowed (weekly has $1 remaining)
+        var check1 = await grain.CheckBudgetAsync();
+        check1.Allowed.Should().BeTrue();
+
+        // Capture another $2 -> weekly spend is $6, which exceeds $5 limit
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o-weekly-exhaust",
+            TokensInput = 200000, // Cost = $2.00
+            TokensOutput = 0,
+            RequestId = "ex-req-2"
+        });
+
+        // Checking budget should now return Allowed = false because weekly is exhausted
+        var check2 = await grain.CheckBudgetAsync();
+        check2.Allowed.Should().BeFalse();
+        check2.Budgets.Single(b => b.Period == "Weekly").RemainingAmount.Should().Be(-1m); // 5 - 6 = -1
+        check2.Budgets.Single(b => b.Period == "Monthly").RemainingAmount.Should().Be(94m); // 100 - 6 = 94
     }
 }
