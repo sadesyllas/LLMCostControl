@@ -40,10 +40,9 @@ public sealed class CodingStandardTests
 
             // Exemptions:
             // - Any file inside obj/ or bin/
-            // - Any file inside Migrations/
             // - Generated files ending with .Designer.cs or ModelSnapshot.cs
             // - Program.cs
-            if (pathParts.Contains("obj") || pathParts.Contains("bin") || pathParts.Contains("Migrations"))
+            if (pathParts.Contains("obj") || pathParts.Contains("bin"))
             {
                 continue;
             }
@@ -60,21 +59,24 @@ public sealed class CodingStandardTests
             var tree = CSharpSyntaxTree.ParseText(code);
             var root = tree.GetRoot();
 
-            // Find all type declarations (class, struct, interface, enum, record)
-            var typeDeclarations = root.DescendantNodes()
-                .OfType<BaseTypeDeclarationSyntax>()
-                .Where(t => !t.Ancestors().OfType<BaseTypeDeclarationSyntax>().Any())
-                .ToList();
+            var topLevelTypes = GetTopLevelTypeNames(root);
 
-            if (typeDeclarations.Count > 1)
+            if (topLevelTypes.Count > 1)
             {
-                var names = string.Join(", ", typeDeclarations.Select(t => t.Identifier.Text));
+                var names = string.Join(", ", topLevelTypes);
                 violations.Add($"{relativePath}: declares multiple top-level types ({names})");
             }
-            else if (typeDeclarations.Count == 1)
+            else if (topLevelTypes.Count == 1)
             {
-                var typeName = typeDeclarations[0].Identifier.Text;
+                var typeName = topLevelTypes[0];
                 var expectedFileName = Path.GetFileNameWithoutExtension(file);
+
+                // For EF migrations in a Migrations folder, strip the 14-digit timestamp prefix
+                if (pathParts.Contains("Migrations") && expectedFileName.Length > 15 && expectedFileName[14] == '_' && long.TryParse(expectedFileName.Substring(0, 14), out _))
+                {
+                    expectedFileName = expectedFileName.Substring(15);
+                }
+
                 if (!expectedFileName.Equals(typeName, StringComparison.OrdinalIgnoreCase))
                 {
                     violations.Add($"{relativePath}: top-level type '{typeName}' does not match file name '{fileName}'");
@@ -96,16 +98,32 @@ public sealed class CodingStandardTests
     [InlineData("public class A { public class B {} }", false)]
     [InlineData("namespace N { public class A {} }", false)]
     [InlineData("namespace N { public class A {} public class B {} }", true)]
+    [InlineData("public delegate void D(); public class A {}", true)]
+    [InlineData("public delegate void D();", false)]
     public void Test_OneTopLevelTypePerFileStandard_WithFixture(string code, bool shouldViolate)
     {
         var tree = CSharpSyntaxTree.ParseText(code);
         var root = tree.GetRoot();
-        var topLevelTypes = root.DescendantNodes()
-            .OfType<BaseTypeDeclarationSyntax>()
-            .Where(t => !t.Ancestors().OfType<BaseTypeDeclarationSyntax>().Any())
-            .ToList();
+        var topLevelTypes = GetTopLevelTypeNames(root);
 
         var hasMultiple = topLevelTypes.Count > 1;
         hasMultiple.Should().Be(shouldViolate);
+    }
+
+    internal static IReadOnlyList<string> GetTopLevelTypeNames(SyntaxNode root)
+    {
+        return root.DescendantNodes()
+            .Where(node => node is BaseTypeDeclarationSyntax || node is DelegateDeclarationSyntax)
+            .Where(node => !node.Ancestors().OfType<BaseTypeDeclarationSyntax>().Any())
+            .Select(node =>
+            {
+                if (node is BaseTypeDeclarationSyntax baseType)
+                    return baseType.Identifier.Text;
+                if (node is DelegateDeclarationSyntax del)
+                    return del.Identifier.Text;
+                return string.Empty;
+            })
+            .Where(name => !string.IsNullOrEmpty(name))
+            .ToList();
     }
 }
