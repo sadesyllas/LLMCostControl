@@ -26,7 +26,6 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         var options = new DbContextOptionsBuilder<CostTrackerDbContext>()
             .UseNpgsql(_postgres.GetConnectionString())
-            .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning))
             .Options;
 
         await using var context = new CostTrackerDbContext(options);
