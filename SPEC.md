@@ -213,7 +213,10 @@ Response:
   configured period dimension (§7). `cost` is reported once; `budgets` carries the
   post-capture running spend / remaining for each period type.
 - `requestId`, when present, is used for **idempotency**: a duplicate capture
-  with the same `requestId` must not double-accrue.
+  with the same `requestId` must not double-accrue. It is stored as the
+  `usage_events` primary key (§9.4), so the ledger append itself enforces
+  exactly-once accrual — a duplicate append is rejected and the caller's running
+  spend (a ledger projection, §9.3) is never incremented twice.
 - Pricing is resolved by **(provider, model)** (§8.1). The provider is determined
   per §6.2.3.
 - If the **(provider, model)** pair is unknown / not in the allowed pricing set —
@@ -520,13 +523,21 @@ Pricing is stored as an **append-only, versioned history** rather than an upsert
 - The grain is responsible for: reading effective budget (possibly via another
   grain / storage), accruing capture costs, computing remaining budget, and
   answering checks.
-- Grain state is persisted to PostgreSQL via Orleans storage providers so that
-  silo restarts do not lose accrued spend.
+- **Running spend is a ledger-derived projection, not persisted grain state
+  (resolved Q9).** The grain does **not** persist running spend via an Orleans
+  storage provider. On activation it **reconstructs** the current running spend for
+  each configured period type by summing the append-only `usage_events` ledger
+  (§9.4) over the current period instance, then keeps that value warm in memory for
+  the activation's lifetime. A silo restart loses nothing — the value is recomputed
+  from the ledger, which is the single source of truth. (The 30-second effective-
+  budget cache of §12.4 is a separate in-memory concern and is unaffected.)
 
 ### 9.2 PostgreSQL
 
 PostgreSQL is the single source of truth for:
-- Per-caller running spend (per period type) — Orleans grain storage.
+- Per-caller running spend (per period type) — **derived** by summing the
+  append-only `usage_events` ledger (§9.4); it is **not** stored as Orleans grain
+  state (§9.1, resolved Q9).
 - Versioned, append-only pricing history per (provider, model) — written by the
   refresh job / Admin upload (§8.7); the current price is the latest version.
 - Groups, group membership, group budgets (per period type), per-user budget
@@ -539,8 +550,15 @@ PostgreSQL is the single source of truth for:
 
 - Capture accrual on a grain is serialised per caller id (single-threaded grain
   activation), which is sufficient for iteration 1.
-- The usage ledger is append-only; running spend is the authoritative live value
-  in the grain, periodically/transactionally flushed to the DB.
+- **The append-only `usage_events` ledger is the single source of truth for
+  running spend** (resolved Q9). The grain's in-memory running spend is a
+  *projection* of the ledger; it is **not** separately persisted or flushed. On
+  capture the grain writes the ledger row **first** — the `event_id` primary key is
+  the idempotency guard (§6.2.2) — and only then increments its in-memory
+  projection. Because that value is derived, a crash or reactivation between the
+  append and the increment is self-healing: the next activation recomputes running
+  spend from the ledger, so a capture can never be double-counted, and there is no
+  dual write to keep atomic.
 
 ### 9.4 Usage audit trail (per-capture ledger rows)
 
@@ -585,7 +603,10 @@ PostgreSQL is the single source of truth for:
 - The ledger is **append-only**: no updates, no deletes. Running spend for any
   caller, period type, and period instance can be reconstructed by summing
   `cost_amount` over the matching `usage_events` rows (`captured_at` places each
-  cost in the correct period instance of every type).
+  cost in the correct period instance of every type). This reconstruction is the
+  runtime mechanism `UserBudgetGrain` uses to warm its running-spend projection on
+  activation (§9.1, §9.3) — the ledger is authoritative and spend is never stored
+  separately.
 - Snapshotting/historicity (compaction, archival, point-in-time queries over
   running spend) is explicitly deferred — see §15. Note that pruning `usage_events`
   is coupled to retaining the `model_pricing` versions they reference (§8.7).
@@ -925,6 +946,7 @@ To be specified in a follow-up section of this document:
 | Q6 | Per-provider pricing & provider resolution | **Resolved** — pricing keyed by **(provider, model)**; `PricingGrain` keyed by `"{provider}:{model}"`. Provider is taken from the call when supplied, else inferred from the model name via a **config-file** prefix map (`Pricing:ProviderInference`), else the call is unknown-model rejected. See §6.2.3, §8.1, §8.5, §8.6. |
 | Q7 | Budget period model (monthly + weekly) | **Resolved** — **multi-period**: budgets are configured per `BudgetPeriodType` (`Monthly`, `Weekly`); resolution and "largest wins" are evaluated **within** each period type; a capture accrues to **every** configured period dimension; the check is allowed iff every configured period has remaining > 0. See §6.2.1, §6.2.2, §7, §9.4. |
 | Q8 | Pricing storage (snapshot vs versioned) | **Resolved** — pricing is an **append-only versioned history** (surrogate id + `EffectiveFrom`), written **insert-on-change**; the current price is the latest version; `usage_events` references the `pricing_version_id` used instead of embedding a price snapshot. See §8.7, §9.4. |
+| Q9 | Running spend persistence | **Resolved** — the append-only `usage_events` ledger is the **single source of truth**; running spend is an **in-memory projection** rebuilt from the ledger on grain activation, **not** persisted as Orleans grain state. Capture appends the ledger row first (its `event_id` PK enforces idempotency), then updates the projection, so a crash/reactivation self-heals and a capture is never double-counted. See §9.1, §9.3, §9.4, §6.2.2. |
 
 ## 17. Coding standards
 
