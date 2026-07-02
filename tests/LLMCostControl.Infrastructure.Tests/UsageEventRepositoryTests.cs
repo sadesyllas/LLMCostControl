@@ -94,4 +94,71 @@ public class UsageEventRepositoryTests : RepositoryTestBase
             periodAccruals: accruals,
             capturedAt: capturedAt);
     }
+
+    [Fact]
+    public async Task GetForCaller_reconstructs_both_monthly_and_weekly_accruals_over_postgres()
+    {
+        var versionId = await SeedPricingAsync();
+        var repo = new UsageEventRepository(Db);
+
+        var capturedAt = new DateTimeOffset(2026, 6, 15, 10, 0, 0, TimeSpan.Zero); // Monday, June 15, 2026
+        var monthlyPeriod = new BudgetPeriod(2026, 6);
+        var weeklyPeriod = BudgetPeriod.FromDate(capturedAt, BudgetPeriodType.Weekly);
+
+        var groupId = Guid.NewGuid();
+        var accruals = new[]
+        {
+            UsageEventPeriodAccrual.Create(
+                eventId: "multi-r1",
+                periodType: BudgetPeriodType.Monthly,
+                periodKey: monthlyPeriod.Key,
+                effectiveGroupId: groupId,
+                budgetSource: BudgetSource.Group,
+                effectiveBudgetAmount: new Money(500m, "USD"),
+                runningSpendAfter: 12.35m),
+            UsageEventPeriodAccrual.Create(
+                eventId: "multi-r1",
+                periodType: BudgetPeriodType.Weekly,
+                periodKey: weeklyPeriod.Key,
+                effectiveGroupId: groupId,
+                budgetSource: BudgetSource.Group,
+                effectiveBudgetAmount: new Money(100m, "USD"),
+                runningSpendAfter: 5.20m)
+        };
+
+        var evt = UsageEvent.Create(
+            eventId: "multi-r1",
+            callerId: CallerId.From("multi@example.com"),
+            model: "gpt-4o",
+            provider: Provider.OpenAI,
+            tokensInput: 1000,
+            tokensOutput: 500,
+            tokensCacheRead: 0,
+            tokensCacheWrite: 0,
+            pricingVersionId: versionId,
+            costAmount: 0.0125m,
+            costCurrency: "USD",
+            periodAccruals: accruals,
+            capturedAt: capturedAt);
+
+        await repo.AppendAsync(evt);
+
+        // Retrieve Monthly events
+        var monthlyEvents = await repo.GetForCallerAsync(
+            CallerId.From("multi@example.com"),
+            monthlyPeriod);
+
+        monthlyEvents.Should().HaveCount(1);
+        monthlyEvents[0].EventId.Should().Be("multi-r1");
+        monthlyEvents[0].PeriodAccruals.Should().Contain(a => a.PeriodType == BudgetPeriodType.Monthly);
+
+        // Retrieve Weekly events
+        var weeklyEvents = await repo.GetForCallerAsync(
+            CallerId.From("multi@example.com"),
+            weeklyPeriod);
+
+        weeklyEvents.Should().HaveCount(1);
+        weeklyEvents[0].EventId.Should().Be("multi-r1");
+        weeklyEvents[0].PeriodAccruals.Should().Contain(a => a.PeriodType == BudgetPeriodType.Weekly);
+    }
 }

@@ -111,6 +111,85 @@ public sealed class OverrideCrudTests : TestContext, IDisposable
     }
 
     [Fact]
+    public async Task AdminUser_CanPerformWeeklyOverrideCrudWorkflow()
+    {
+        // 1. Arrange & Seed
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("admin@example.com");
+        authContext.SetRoles("CostTracker.Admin");
+
+        // 2. Render Page & Wait for Load
+        var cut = RenderComponent<Overrides>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
+
+        // 3. Set Weekly Override
+        cut.Find("#callerId").Change("weekly-user@example.com");
+        cut.Find("#periodType").Change(BudgetPeriodType.Weekly.ToString());
+        cut.Find("#amount").Change("75.00");
+        cut.Find("#currency").Change("USD");
+        await cut.InvokeAsync(() => cut.Find("#btn-save-override").Click());
+
+        // Assert rendered in table first (await async reload)
+        var tableRowId = "#override-weekly-user-at-example-dot-com-weekly";
+        cut.WaitForAssertion(() =>
+        {
+            var row = cut.Find(tableRowId);
+            row.Should().NotBeNull();
+            cut.Find($"{tableRowId} .override-caller-email").TextContent.Should().Be("weekly-user@example.com");
+            cut.Find($"{tableRowId} .override-amount-display").TextContent.Should().Contain("75.00");
+        });
+
+        // Assert override created in DB
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            var overrides = await db.UserBudgetOverrides.ToListAsync();
+            overrides.Should().ContainSingle(o => o.CallerId.Value == "weekly-user@example.com" && o.Amount.Amount == 75.00m && o.PeriodType == BudgetPeriodType.Weekly);
+        }
+
+        // 4. Update Override
+        var editBtn = cut.Find($"{tableRowId} .btn-edit-override");
+        await cut.InvokeAsync(() => editBtn.Click());
+
+        // Assert form inputs populated
+        cut.Find("#callerId").GetAttribute("value").Should().Be("weekly-user@example.com");
+        cut.Find("#amount").GetAttribute("value").Should().StartWith("75");
+
+        // Modify amount
+        cut.Find("#amount").Change("120.00");
+        await cut.InvokeAsync(() => cut.Find("#btn-save-override").Click());
+
+        // Assert updated visually first (await async reload)
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find($"{tableRowId} .override-amount-display").TextContent.Should().Contain("120.00");
+        });
+
+        // Assert override updated in DB
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            var overrides = await db.UserBudgetOverrides.ToListAsync();
+            overrides.Should().ContainSingle(o => o.CallerId.Value == "weekly-user@example.com" && o.Amount.Amount == 120.00m && o.PeriodType == BudgetPeriodType.Weekly);
+        }
+
+        // 5. Clear Override
+        var clearBtn = cut.Find($"{tableRowId} .btn-clear-override");
+        await cut.InvokeAsync(() => clearBtn.Click());
+
+        // Assert override removed visually first (await async reload)
+        cut.WaitForAssertion(() =>
+        {
+            cut.FindAll(tableRowId).Should().BeEmpty();
+        });
+
+        // Assert override removed from DB
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            var anyOverride = await db.UserBudgetOverrides.AnyAsync();
+            anyOverride.Should().BeFalse();
+        }
+    }
+
+    [Fact]
     public async Task ReadOnlyUser_CannotPerformOverrideModifications()
     {
         // Arrange

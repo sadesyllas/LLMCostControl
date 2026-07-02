@@ -80,6 +80,7 @@ builder.Host.UseOrleans(silo =>
 
     if (!string.IsNullOrWhiteSpace(connectionString))
     {
+        // Retained for backwards compatibility, cluster admin grains, and potential future state-persisted grains.
         silo.AddAdoNetGrainStorage("Default", options =>
         {
             options.ConnectionString = connectionString;
@@ -94,6 +95,7 @@ builder.Host.UseOrleans(silo =>
     else
     {
         silo.UseLocalhostClustering();
+        // Retained for backwards compatibility, cluster admin grains, and potential future state-persisted grains.
         silo.AddMemoryGrainStorage("Default");
         silo.AddMemoryGrainStorage("PubSubStore");
     }

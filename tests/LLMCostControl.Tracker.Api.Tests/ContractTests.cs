@@ -52,11 +52,13 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
     public async Task BudgetCheckResponse_ConformsToContractSchema()
     {
         // Arrange
-        SeedBudget("contract-check@example.com", EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+        var callerId = "contract-check@example.com";
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Monthly, EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Weekly, EffectiveBudget.FromUserOverride(new Money(50m, "USD")));
 
         // Act
         var resp = await CreateClient().PostAsJsonAsync("/api/budget/check",
-            new { callerId = "contract-check@example.com" });
+            new { callerId });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var jsonString = await resp.Content.ReadAsStringAsync();
@@ -68,12 +70,12 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
         root["allowed"]!.GetValue<bool>().Should().BeTrue();
 
         root.ContainsKey("callerId").Should().BeTrue();
-        root["callerId"]!.GetValue<string>().Should().Be("contract-check@example.com");
+        root["callerId"]!.GetValue<string>().Should().Be(callerId);
 
         root.ContainsKey("budgets").Should().BeTrue();
         var budgetsArray = root["budgets"]?.AsArray();
         budgetsArray.Should().NotBeNull();
-        budgetsArray.Should().NotBeEmpty();
+        budgetsArray.Should().HaveCount(2);
 
         var monthly = budgetsArray!.Select(x => x!.AsObject()).First(x => x["period"]!.GetValue<string>() == "Monthly");
         monthly.ContainsKey("period").Should().BeTrue();
@@ -100,6 +102,33 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
         remainingNode!.ContainsKey("amount").Should().BeTrue();
         remainingNode["amount"]!.GetValue<decimal>().Should().Be(100m);
         remainingNode.ContainsKey("currency").Should().BeTrue();
+
+        // Weekly contract verification
+        var weekly = budgetsArray!.Select(x => x!.AsObject()).First(x => x["period"]!.GetValue<string>() == "Weekly");
+        weekly.ContainsKey("period").Should().BeTrue();
+        weekly.ContainsKey("periodKey").Should().BeTrue();
+        weekly.ContainsKey("budgetSource").Should().BeTrue();
+        weekly.ContainsKey("effectiveBudget").Should().BeTrue();
+        
+        var weeklyBudgetNode = weekly["effectiveBudget"]?.AsObject();
+        weeklyBudgetNode.Should().NotBeNull();
+        weeklyBudgetNode!.ContainsKey("amount").Should().BeTrue();
+        weeklyBudgetNode["amount"]!.GetValue<decimal>().Should().Be(50m);
+        weeklyBudgetNode.ContainsKey("currency").Should().BeTrue();
+        weeklyBudgetNode["currency"]!.GetValue<string>().Should().Be("USD");
+
+        weekly.ContainsKey("runningSpend").Should().BeTrue();
+        var weeklySpendNode = weekly["runningSpend"]?.AsObject();
+        weeklySpendNode.Should().NotBeNull();
+        weeklySpendNode!.ContainsKey("amount").Should().BeTrue();
+        weeklySpendNode.ContainsKey("currency").Should().BeTrue();
+
+        weekly.ContainsKey("remaining").Should().BeTrue();
+        var weeklyRemainingNode = weekly["remaining"]?.AsObject();
+        weeklyRemainingNode.Should().NotBeNull();
+        weeklyRemainingNode!.ContainsKey("amount").Should().BeTrue();
+        weeklyRemainingNode["amount"]!.GetValue<decimal>().Should().Be(50m);
+        weeklyRemainingNode.ContainsKey("currency").Should().BeTrue();
     }
 
     /// <summary>
@@ -110,12 +139,14 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
     public async Task UsageCaptureResponse_ConformsToContractSchema()
     {
         // Arrange
-        SeedBudget("contract-capture@example.com", EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+        var callerId = "contract-capture@example.com";
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Monthly, EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Weekly, EffectiveBudget.FromUserOverride(new Money(50m, "USD")));
         SeedPricing("gpt-4o", 2.5m, 10m);
 
         var captureRequest = new
         {
-            callerId = "contract-capture@example.com",
+            callerId,
             model = "gpt-4o",
             tokens = new
             {
@@ -137,7 +168,7 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
         // Assert properties in capture response
         root.Should().NotBeNull();
         root!.ContainsKey("callerId").Should().BeTrue();
-        root["callerId"]!.GetValue<string>().Should().Be("contract-capture@example.com");
+        root["callerId"]!.GetValue<string>().Should().Be(callerId);
 
         root.ContainsKey("cost").Should().BeTrue();
         var costNode = root["cost"]?.AsObject();
@@ -150,7 +181,7 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
         root.ContainsKey("budgets").Should().BeTrue();
         var budgetsArray = root["budgets"]?.AsArray();
         budgetsArray.Should().NotBeNull();
-        budgetsArray.Should().NotBeEmpty();
+        budgetsArray.Should().HaveCount(2);
 
         var monthly = budgetsArray!.Select(x => x!.AsObject()).First(x => x["period"]!.GetValue<string>() == "Monthly");
         monthly.ContainsKey("period").Should().BeTrue();
@@ -167,6 +198,22 @@ public sealed class ContractTests : IClassFixture<TrackerApiFactory>
         remainingNode.Should().NotBeNull();
         remainingNode!.ContainsKey("amount").Should().BeTrue();
         remainingNode["amount"]!.GetValue<decimal>().Should().Be(100m - 0.0075m);
+
+        var weekly = budgetsArray!.Select(x => x!.AsObject()).First(x => x["period"]!.GetValue<string>() == "Weekly");
+        weekly.ContainsKey("period").Should().BeTrue();
+        weekly.ContainsKey("periodKey").Should().BeTrue();
+
+        weekly.ContainsKey("runningSpend").Should().BeTrue();
+        var weeklySpendNode = weekly["runningSpend"]?.AsObject();
+        weeklySpendNode.Should().NotBeNull();
+        weeklySpendNode!.ContainsKey("amount").Should().BeTrue();
+        weeklySpendNode["amount"]!.GetValue<decimal>().Should().Be(0.0075m);
+
+        weekly.ContainsKey("remaining").Should().BeTrue();
+        var weeklyRemainingNode = weekly["remaining"]?.AsObject();
+        weeklyRemainingNode.Should().NotBeNull();
+        weeklyRemainingNode!.ContainsKey("amount").Should().BeTrue();
+        weeklyRemainingNode["amount"]!.GetValue<decimal>().Should().Be(50m - 0.0075m);
     }
 
     /// <summary>

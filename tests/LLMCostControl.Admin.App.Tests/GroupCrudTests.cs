@@ -2,6 +2,7 @@ using Bunit;
 using Bunit.TestDoubles;
 using LLMCostControl.Admin.App.Components.Pages;
 using LLMCostControl.Domain.Budgets;
+using LLMCostControl.Domain.Common;
 using LLMCostControl.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,7 +61,7 @@ public sealed class GroupCrudTests : TestContext, IDisposable
         var groupCard = cut.WaitForElement($"#group-{groupId}");
         groupCard.Should().NotBeNull();
 
-        // 4. Set Group Budget
+        // 4. Set Group Monthly Budget
         var amountInput = cut.Find($"#group-{groupId} .input-budget-amount");
         var currencySelect = cut.Find($"#group-{groupId} .select-budget-currency");
         var setBudgetBtn = cut.Find($"#group-{groupId} .btn-set-budget");
@@ -69,15 +70,36 @@ public sealed class GroupCrudTests : TestContext, IDisposable
         currencySelect.Change("USD");
         await cut.InvokeAsync(() => setBudgetBtn.Click());
 
-        // Assert budget rendered
+        // Assert monthly budget rendered
         cut.WaitForAssertion(() => cut.Find($"#group-{groupId} .budget-amount-display").TextContent.Should().Contain("500.00"));
 
-        // Assert budget saved in DB
+        // Assert monthly budget saved in DB
         using (var db = _dbFactory.CreateDbContext())
         {
-            var budget = await db.GroupBudgets.FirstOrDefaultAsync(b => b.GroupId == groupId);
+            var budget = await db.GroupBudgets.FirstOrDefaultAsync(b => b.GroupId == groupId && b.PeriodType == BudgetPeriodType.Monthly);
             budget.Should().NotBeNull();
             budget!.Amount.Amount.Should().Be(500.00m);
+            budget.Amount.Currency.Should().Be("USD");
+        }
+
+        // 4b. Set Group Weekly Budget
+        var weeklyAmountInput = cut.Find($"#group-{groupId} .input-weekly-budget-amount");
+        var weeklyCurrencySelect = cut.Find($"#group-{groupId} .select-weekly-budget-currency");
+        var setWeeklyBudgetBtn = cut.Find($"#group-{groupId} .btn-set-weekly-budget");
+
+        weeklyAmountInput.Change("150.00");
+        weeklyCurrencySelect.Change("USD");
+        await cut.InvokeAsync(() => setWeeklyBudgetBtn.Click());
+
+        // Assert weekly budget rendered
+        cut.WaitForAssertion(() => cut.Find($"#group-{groupId} .weekly-budget-amount-display").TextContent.Should().Contain("150.00"));
+
+        // Assert weekly budget saved in DB
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            var budget = await db.GroupBudgets.FirstOrDefaultAsync(b => b.GroupId == groupId && b.PeriodType == BudgetPeriodType.Weekly);
+            budget.Should().NotBeNull();
+            budget!.Amount.Amount.Should().Be(150.00m);
             budget.Amount.Currency.Should().Be("USD");
         }
 
@@ -132,12 +154,16 @@ public sealed class GroupCrudTests : TestContext, IDisposable
             anyMember.Should().BeFalse();
         }
 
-        // 8. Clear Budget
+        // 8. Clear Budgets
         var clearBudgetBtn = cut.Find($"#group-{groupId} .btn-clear-budget");
         await cut.InvokeAsync(() => clearBudgetBtn.Click());
 
+        var clearWeeklyBudgetBtn = cut.Find($"#group-{groupId} .btn-clear-weekly-budget");
+        await cut.InvokeAsync(() => clearWeeklyBudgetBtn.Click());
+
         // Assert budget cleared visually
         cut.WaitForAssertion(() => cut.Find($"#group-{groupId} .budget-amount-display").TextContent.Should().Contain("No budget set for current period."));
+        cut.WaitForAssertion(() => cut.Find($"#group-{groupId} .weekly-budget-amount-display").TextContent.Should().Contain("No budget set for current period."));
 
         // Assert budget cleared in DB
         using (var db = _dbFactory.CreateDbContext())

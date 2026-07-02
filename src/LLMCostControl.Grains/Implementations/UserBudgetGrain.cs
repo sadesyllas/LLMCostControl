@@ -546,4 +546,13 @@ public sealed class UserBudgetGrain : Grain, IUserBudgetGrain
             BindingEffectiveGroupId = bindingGroupId
         };
     }
+
+    /// <summary>
+    /// Forcefully deactivates the grain activation on idle.
+    /// </summary>
+    public Task DeactivateOnIdleAsync()
+    {
+        DeactivateOnIdle();
+        return Task.CompletedTask;
+    }
 }

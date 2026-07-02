@@ -299,4 +299,73 @@ public sealed class TelemetryTaggingTests : IClassFixture<TelemetryWebAppFactory
             }
         }
     }
+
+    [Fact]
+    public async Task Check_and_Capture_endpoints_tag_weekly_when_weekly_has_less_headroom()
+    {
+        var callerId = "telemetry-weekly-headroom@example.com";
+        var weeklyGroup = Guid.NewGuid();
+        var monthlyGroup = Guid.NewGuid();
+
+        // Weekly has less headroom ($5 < $100)
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Monthly, EffectiveBudget.FromGroup(new Money(100m, "USD"), monthlyGroup));
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Weekly, EffectiveBudget.FromGroup(new Money(5m, "USD"), weeklyGroup));
+
+        _factory.PricingStore.SetPricing(ModelPricing.Create(Provider.OpenAI, "gpt-4o", TokenPrices.Create(2.5m, 10m)));
+
+        // Set up Activity listener
+        var activities = new List<System.Diagnostics.Activity>();
+        using var actListener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "Microsoft.AspNetCore" || source.Name == "LLMCostControl.Tracker.Api",
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> options) => System.Diagnostics.ActivitySamplingResult.AllData,
+            ActivityStopped = act => { lock (activities) { activities.Add(act); } }
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(actListener);
+
+        var client = CreateClient();
+
+        // Call check budget
+        var checkResp = await client.PostAsJsonAsync("/api/budget/check", new { callerId });
+        checkResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Capture usage
+        var captureResp = await client.PostAsJsonAsync("/api/usage/capture", new
+        {
+            callerId,
+            model = "gpt-4o",
+            tokens = new { input = 1000, output = 500 }
+        });
+        captureResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Anonymize the callerId for trace lookup
+        var anonCallerId = LLMCostControl.Observability.ObservabilityExtensions.AnonymizeCallerId(callerId);
+
+        // Wait for activities to be flushed (they are added on activity stop)
+        List<System.Diagnostics.Activity> relevantActivities;
+        var start = DateTime.UtcNow;
+        while (true)
+        {
+            lock (activities)
+            {
+                relevantActivities = activities
+                    .Where(a => a.Tags.Any(t => t.Key == "caller_id" && (string?)t.Value == anonCallerId))
+                    .ToList();
+            }
+
+            if (relevantActivities.Count >= 2 || (DateTime.UtcNow - start) > TimeSpan.FromSeconds(5))
+            {
+                break;
+            }
+            await Task.Delay(100);
+        }
+
+        relevantActivities.Should().HaveCount(2);
+        foreach (var act in relevantActivities)
+        {
+            act.Tags.Should().Contain(t => t.Key == "budget_period" && (string?)t.Value == "Weekly");
+            act.Tags.Should().Contain(t => t.Key == "budget_source" && (string?)t.Value == "Group");
+            act.Tags.Should().Contain(t => t.Key == "effective_group" && (string?)t.Value == weeklyGroup.ToString());
+        }
+    }
 }

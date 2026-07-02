@@ -165,6 +165,64 @@ public sealed class CheckCaptureEndpointTests : IClassFixture<TrackerApiFactory>
     }
 
     [Fact]
+    public async Task Check_returns_multiple_budgets_when_both_monthly_and_weekly_configured()
+    {
+        var callerId = "multi-check@example.com";
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Monthly, EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Weekly, EffectiveBudget.FromUserOverride(new Money(50m, "USD")));
+
+        var resp = await CreateClient().PostAsJsonAsync("/api/budget/check", new { callerId });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<BudgetCheckResponse>();
+        body!.Allowed.Should().BeTrue();
+        body.Budgets.Should().HaveCount(2);
+
+        var monthly = body.Budgets.First(b => b.Period == "Monthly");
+        monthly.EffectiveBudget!.Amount.Should().Be(100m);
+
+        var weekly = body.Budgets.First(b => b.Period == "Weekly");
+        weekly.EffectiveBudget!.Amount.Should().Be(50m);
+    }
+
+    [Fact]
+    public async Task Check_returns_denied_when_weekly_exhausted_even_if_monthly_has_remaining()
+    {
+        var callerId = "multi-deny@example.com";
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Monthly, EffectiveBudget.FromUserOverride(new Money(100m, "USD")));
+        _factory.BudgetStore.SetBudget(callerId, BudgetPeriodType.Weekly, EffectiveBudget.FromUserOverride(new Money(5m, "USD")));
+        SeedPricing("gpt-4o-contract", 10m, 20m); // $10 per 1M input tokens
+
+        var client = CreateClient();
+
+        // 1. Capture 600,000 input tokens = $6 USD cost.
+        // This exceeds the $5 USD weekly budget, but is well within $100 USD monthly budget.
+        var captureResp = await client.PostAsJsonAsync("/api/usage/capture", new
+        {
+            callerId,
+            model = "gpt-4o-contract",
+            tokens = new { input = 600000, output = 0, cacheRead = 0, cacheWrite = 0 }
+        });
+        captureResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // 2. Call check budget. It should deny because weekly is exhausted (spend $6 >= budget $5).
+        var checkResp = await client.PostAsJsonAsync("/api/budget/check", new { callerId });
+        checkResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await checkResp.Content.ReadFromJsonAsync<BudgetCheckResponse>();
+        body!.Allowed.Should().BeFalse();
+        body.Budgets.Should().HaveCount(2);
+
+        var weekly = body.Budgets.First(b => b.Period == "Weekly");
+        weekly.RunningSpend.Amount.Should().Be(6.00m);
+        weekly.Remaining.Amount.Should().Be(-1.00m);
+
+        var monthly = body.Budgets.First(b => b.Period == "Monthly");
+        monthly.RunningSpend.Amount.Should().Be(6.00m);
+        monthly.Remaining.Amount.Should().Be(94.00m);
+    }
+
+    [Fact]
     public async Task Check_without_auth_returns_401()
     {
         var client = _factory.CreateClient();

@@ -87,4 +87,40 @@ public class BudgetResolutionTests : RepositoryTestBase
         result.Source.Should().Be(BudgetSource.None);
         result.HasBudget.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task Resolve_with_mixed_dataset_filters_by_correct_period_type()
+    {
+        var caller = CallerId.From("mixed@example.com");
+
+        // Seed Group
+        var group = Group.Create("MixedPeriodGroup");
+        await new GroupRepository(Db).AddAsync(group);
+        await new GroupMembershipRepository(Db).AddAsync(GroupMembership.Create(group.Id, caller));
+
+        // Seed both Weekly and Monthly budget overrides
+        var monthlyOverride = UserBudgetOverride.Create(caller, new Money(200m, "USD"), BudgetPeriodType.Monthly);
+        var weeklyOverride = UserBudgetOverride.Create(caller, new Money(50m, "USD"), BudgetPeriodType.Weekly);
+
+        var overrideRepo = new UserBudgetOverrideRepository(Db);
+        await overrideRepo.UpsertAsync(monthlyOverride);
+        await overrideRepo.UpsertAsync(weeklyOverride);
+
+        // Seed both Weekly and Monthly group budgets
+        var groupBudgetRepo = new GroupBudgetRepository(Db);
+        await groupBudgetRepo.UpsertAsync(GroupBudget.Create(group.Id, new Money(1000m, "USD"), BudgetPeriodType.Monthly));
+        await groupBudgetRepo.UpsertAsync(GroupBudget.Create(group.Id, new Money(250m, "USD"), BudgetPeriodType.Weekly));
+
+        var resolutionRepo = new BudgetResolutionRepository(Db);
+
+        // Act & Assert Monthly resolution (should resolve user override of monthly type)
+        var monthlyResult = await resolutionRepo.ResolveAsync(caller, BudgetPeriodType.Monthly);
+        monthlyResult.Source.Should().Be(BudgetSource.UserOverride);
+        monthlyResult.Amount.Should().Be(new Money(200m, "USD"));
+
+        // Act & Assert Weekly resolution (should resolve user override of weekly type)
+        var weeklyResult = await resolutionRepo.ResolveAsync(caller, BudgetPeriodType.Weekly);
+        weeklyResult.Source.Should().Be(BudgetSource.UserOverride);
+        weeklyResult.Amount.Should().Be(new Money(50m, "USD"));
+    }
 }

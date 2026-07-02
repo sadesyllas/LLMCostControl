@@ -556,6 +556,78 @@ public class UserBudgetGrainTests : GrainTestBase
     }
 
     [Fact]
+    public async Task Grain_reconstructs_running_spend_on_reactivation_without_double_counting()
+    {
+        var caller = "reactivate-reconstruct@example.com";
+        BudgetStore.SetBudget(caller, EffectiveBudget.FromUserOverride(Usd(100m)));
+
+        var pricing = ModelPricing.Create(Provider.OpenAI, "gpt-4o-reactivate", TokenPrices.Create(10m, 20m));
+        Store.SetPricing(pricing);
+
+        UsageEventStore.Reset();
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>(caller);
+
+        // Capture a request
+        var req = new UsageCaptureRequest
+        {
+            RequestId = "reactivate-req-1",
+            Model = "gpt-4o-reactivate",
+            Provider = "openai",
+            TokensInput = 50000,
+            TokensOutput = 50000
+        };
+
+        var res1 = await grain.CaptureUsageAsync(req);
+        res1.CostAmount.Should().Be(1.50m);
+        res1.Budgets[0].RunningSpendAmount.Should().Be(1.50m);
+
+        // Force deactivation
+        await grain.DeactivateOnIdleAsync();
+
+        // Access the grain again. On reactivation, it should rebuild the spend to $1.50 (no double counting, no loss).
+        var checkResult = await grain.CheckBudgetAsync();
+        checkResult.Allowed.Should().BeTrue();
+        checkResult.Budgets[0].RunningSpendAmount.Should().Be(1.50m);
+    }
+
+    [Fact]
+    public async Task CaptureUsageAsync_is_idempotent_across_reactivations()
+    {
+        var caller = "reactivate-idempotent@example.com";
+        BudgetStore.SetBudget(caller, EffectiveBudget.FromUserOverride(Usd(100m)));
+
+        var pricing = ModelPricing.Create(Provider.OpenAI, "gpt-4o-reactivate-idem", TokenPrices.Create(10m, 20m));
+        Store.SetPricing(pricing);
+
+        UsageEventStore.Reset();
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>(caller);
+
+        // Capture first request
+        var req = new UsageCaptureRequest
+        {
+            RequestId = "reactivate-idem-req-1",
+            Model = "gpt-4o-reactivate-idem",
+            Provider = "openai",
+            TokensInput = 50000,
+            TokensOutput = 50000
+        };
+
+        var res1 = await grain.CaptureUsageAsync(req);
+        res1.CostAmount.Should().Be(1.50m);
+        res1.Budgets[0].RunningSpendAmount.Should().Be(1.50m);
+
+        // Force deactivation
+        await grain.DeactivateOnIdleAsync();
+
+        // Capture duplicate request across reactivation: should not double accrue and return original cost
+        var res2 = await grain.CaptureUsageAsync(req);
+        res2.CostAmount.Should().Be(1.50m);
+        res2.Budgets[0].RunningSpendAmount.Should().Be(1.50m, "duplicate request across reactivation should not double accrue.");
+    }
+
+    [Fact]
     public async Task Capture_usage_throws_when_currency_mismatches_budget_currency()
     {
         BudgetStore.SetBudget("mismatch-budget@example.com",
@@ -820,5 +892,89 @@ public class UserBudgetGrainTests : GrainTestBase
         check2.Allowed.Should().BeFalse();
         check2.Budgets.Single(b => b.Period == "Weekly").RemainingAmount.Should().Be(-1m); // 5 - 6 = -1
         check2.Budgets.Single(b => b.Period == "Monthly").RemainingAmount.Should().Be(94m); // 100 - 6 = 94
+    }
+
+    [Fact]
+    public async Task Monthly_rollover_resets_monthly_spend_but_leaves_weekly_spend_untouched()
+    {
+        var caller = "monthly-roll@example.com";
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Monthly, EffectiveBudget.FromUserOverride(Usd(100m), BudgetPeriodType.Monthly));
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Weekly, EffectiveBudget.FromUserOverride(Usd(50m), BudgetPeriodType.Weekly));
+
+        Store.SetPricing(
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o-monthly-roll",
+                TokenPrices.Create(2.5m, 10m, 1.25m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>(caller);
+
+        // 1. Capture on Saturday, Jan 31, 2026 (week is 2026-W05)
+        TimeProvider.SetUtcNow(new DateTimeOffset(2026, 1, 31, 12, 0, 0, TimeSpan.Zero)); // 2026-W05
+
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o-monthly-roll",
+            TokensInput = 1000000, // Cost = $2.50
+            TokensOutput = 0,
+            RequestId = "m-roll-req-1"
+        });
+
+        // 2. Advance to Sunday, Feb 1, 2026 (still week 2026-W05, but month is now February)
+        TimeProvider.SetUtcNow(new DateTimeOffset(2026, 2, 1, 12, 0, 0, TimeSpan.Zero)); // 2026-W05
+
+        // Check budget
+        var checkResult = await grain.CheckBudgetAsync();
+        checkResult.Budgets.Should().HaveCount(2);
+
+        var monthly = checkResult.Budgets.Single(b => b.Period == "Monthly");
+        monthly.PeriodKey.Should().Be("2026-02");
+        monthly.RunningSpendAmount.Should().Be(0m, "monthly spend should reset to 0 because we rolled over to February.");
+        monthly.RemainingAmount.Should().Be(100m);
+
+        var weekly = checkResult.Budgets.Single(b => b.Period == "Weekly");
+        weekly.PeriodKey.Should().Be("2026-W05");
+        weekly.RunningSpendAmount.Should().Be(2.5m, "weekly spend should persist because we are still in week 2026-W05.");
+        weekly.RemainingAmount.Should().Be(47.5m);
+    }
+
+    [Fact]
+    public async Task Deny_when_monthly_is_exhausted_but_weekly_is_fine()
+    {
+        var caller = "exhausted-monthly@example.com";
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Monthly, EffectiveBudget.FromUserOverride(Usd(10m), BudgetPeriodType.Monthly));
+        BudgetStore.SetBudget(caller, BudgetPeriodType.Weekly, EffectiveBudget.FromUserOverride(Usd(50m), BudgetPeriodType.Weekly));
+
+        Store.SetPricing(
+            ModelPricing.Create(Provider.OpenAI, "gpt-4o-monthly-exhaust",
+                TokenPrices.Create(10m, 10m)));
+
+        var grain = GrainFactory.GetGrain<IUserBudgetGrain>(caller);
+
+        // Capture $8
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o-monthly-exhaust",
+            TokensInput = 800000, // Cost = $8.00
+            TokensOutput = 0,
+            RequestId = "m-ex-req-1"
+        });
+
+        // Now checking should be allowed (monthly has $2 remaining)
+        var check1 = await grain.CheckBudgetAsync();
+        check1.Allowed.Should().BeTrue();
+
+        // Capture another $4 -> monthly spend is $12, which exceeds $10 limit
+        await grain.CaptureUsageAsync(new UsageCaptureRequest
+        {
+            Model = "gpt-4o-monthly-exhaust",
+            TokensInput = 400000, // Cost = $4.00
+            TokensOutput = 0,
+            RequestId = "m-ex-req-2"
+        });
+
+        // Checking budget should now return Allowed = false because monthly is exhausted
+        var check2 = await grain.CheckBudgetAsync();
+        check2.Allowed.Should().BeFalse();
+        check2.Budgets.Single(b => b.Period == "Monthly").RemainingAmount.Should().Be(-2m); // 10 - 12 = -2
+        check2.Budgets.Single(b => b.Period == "Weekly").RemainingAmount.Should().Be(38m); // 50 - 12 = 38
     }
 }

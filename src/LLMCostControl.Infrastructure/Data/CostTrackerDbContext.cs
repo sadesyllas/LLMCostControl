@@ -156,7 +156,7 @@ public class CostTrackerDbContext : DbContext
             e.Property(x => x.FetchedAt).IsRequired();
             e.Property(x => x.EffectiveFrom).IsRequired().HasColumnName("effective_from");
             e.Ignore(x => x.StaleSince);
-            e.HasIndex(x => new { x.Provider, x.Model, x.EffectiveFrom });
+            e.HasIndex(x => new { x.Provider, x.Model, x.EffectiveFrom, x.Id });
         });
     }
 
@@ -257,7 +257,11 @@ public class CostTrackerDbContext : DbContext
 
         private static Provider ParseProvider(string value)
         {
-            return ProviderResolver.TryParseProvider(value, out var p) ? p : default;
+            if (ProviderResolver.TryParseProvider(value, out var p))
+            {
+                return p;
+            }
+            throw new FormatException($"Invalid provider value stored in database: '{value}'.");
         }
     }
 
