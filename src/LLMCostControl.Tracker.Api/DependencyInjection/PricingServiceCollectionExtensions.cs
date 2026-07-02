@@ -24,9 +24,8 @@ public static class PricingServiceCollectionExtensions
     public static IServiceCollection AddPricingRefresh(this IServiceCollection services, IConfiguration configuration)
     {
         var refreshSection = configuration.GetSection("Pricing:Refresh");
-        var options = new PricingRefreshOptions();
-        refreshSection.Bind(options);
-        services.AddSingleton(options);
+        services.Configure<PricingRefreshOptions>(refreshSection);
+        services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<PricingRefreshOptions>>().Value);
 
         services.AddScoped<ModelPricingRepository>();
         services.AddHttpClient();

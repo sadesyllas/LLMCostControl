@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using LLMCostControl.Domain.Pricing;
+using LLMCostControl.Infrastructure.Pricing;
 using LLMCostControl.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -152,5 +153,27 @@ public class ModelPricingRepositoryTests : RepositoryTestBase
         var reloaded = await repo.GetByProviderAndModelAsync(Provider.OpenAI, "gpt-4o");
         reloaded.Should().NotBeNull();
         reloaded!.StaleSince.Should().BeNull("database does not store staleSince");
+    }
+
+    [Fact]
+    public async Task Custom_provider_cadence_drives_staleness_calculation()
+    {
+        var options = new PricingRefreshOptions();
+        options.ProviderCadences["openai"] = TimeSpan.FromMinutes(15);
+
+        var repo = new ModelPricingRepository(Db, options);
+        var pricing = ModelPricing.Create(
+            Provider.OpenAI,
+            "gpt-4o",
+            TokenPrices.Create(2.5m, 10m),
+            fetchedAt: DateTimeOffset.UtcNow.AddMinutes(-20));
+
+        await repo.InsertNewVersionAsync(pricing);
+
+        var retrieved = await repo.GetByProviderAndModelAsync(Provider.OpenAI, "gpt-4o");
+        retrieved.Should().NotBeNull();
+        retrieved!.IsStale.Should().BeTrue("20 minutes is greater than the custom 15 minute cadence");
+        retrieved.StaleSince.Should().NotBeNull();
+        retrieved.StaleSince.Value.Should().BeCloseTo(pricing.FetchedAt.AddMinutes(15), TimeSpan.FromSeconds(1));
     }
 }
