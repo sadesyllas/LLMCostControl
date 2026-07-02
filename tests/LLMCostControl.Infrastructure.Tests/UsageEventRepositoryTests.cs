@@ -101,12 +101,15 @@ public class UsageEventRepositoryTests : RepositoryTestBase
         var versionId = await SeedPricingAsync();
         var repo = new UsageEventRepository(Db);
 
-        var capturedAt = new DateTimeOffset(2026, 6, 15, 10, 0, 0, TimeSpan.Zero); // Monday, June 15, 2026
+        var capturedAt1 = new DateTimeOffset(2026, 6, 15, 10, 0, 0, TimeSpan.Zero); // Monday, June 15, 2026 (W25)
+        var capturedAt2 = new DateTimeOffset(2026, 6, 25, 10, 0, 0, TimeSpan.Zero); // Thursday, June 25, 2026 (W26)
+
         var monthlyPeriod = new BudgetPeriod(2026, 6);
-        var weeklyPeriod = BudgetPeriod.FromDate(capturedAt, BudgetPeriodType.Weekly);
+        var weeklyPeriod1 = BudgetPeriod.FromDate(capturedAt1, BudgetPeriodType.Weekly);
+        var weeklyPeriod2 = BudgetPeriod.FromDate(capturedAt2, BudgetPeriodType.Weekly);
 
         var groupId = Guid.NewGuid();
-        var accruals = new[]
+        var accruals1 = new[]
         {
             UsageEventPeriodAccrual.Create(
                 eventId: "multi-r1",
@@ -119,14 +122,14 @@ public class UsageEventRepositoryTests : RepositoryTestBase
             UsageEventPeriodAccrual.Create(
                 eventId: "multi-r1",
                 periodType: BudgetPeriodType.Weekly,
-                periodKey: weeklyPeriod.Key,
+                periodKey: weeklyPeriod1.Key,
                 effectiveGroupId: groupId,
                 budgetSource: BudgetSource.Group,
                 effectiveBudgetAmount: new Money(100m, "USD"),
                 runningSpendAfter: 5.20m)
         };
 
-        var evt = UsageEvent.Create(
+        var evt1 = UsageEvent.Create(
             eventId: "multi-r1",
             callerId: CallerId.From("multi@example.com"),
             model: "gpt-4o",
@@ -138,27 +141,101 @@ public class UsageEventRepositoryTests : RepositoryTestBase
             pricingVersionId: versionId,
             costAmount: 0.0125m,
             costCurrency: "USD",
-            periodAccruals: accruals,
-            capturedAt: capturedAt);
+            periodAccruals: accruals1,
+            capturedAt: capturedAt1);
 
-        await repo.AppendAsync(evt);
+        var accruals2 = new[]
+        {
+            UsageEventPeriodAccrual.Create(
+                eventId: "multi-r2",
+                periodType: BudgetPeriodType.Monthly,
+                periodKey: monthlyPeriod.Key,
+                effectiveGroupId: null,
+                budgetSource: BudgetSource.UserOverride,
+                effectiveBudgetAmount: new Money(1000m, "USD"),
+                runningSpendAfter: 24.70m),
+            UsageEventPeriodAccrual.Create(
+                eventId: "multi-r2",
+                periodType: BudgetPeriodType.Weekly,
+                periodKey: weeklyPeriod2.Key,
+                effectiveGroupId: null,
+                budgetSource: BudgetSource.UserOverride,
+                effectiveBudgetAmount: new Money(200m, "USD"),
+                runningSpendAfter: 8.40m)
+        };
 
-        // Retrieve Monthly events
+        var evt2 = UsageEvent.Create(
+            eventId: "multi-r2",
+            callerId: CallerId.From("multi@example.com"),
+            model: "gpt-4o",
+            provider: Provider.OpenAI,
+            tokensInput: 500,
+            tokensOutput: 250,
+            tokensCacheRead: 0,
+            tokensCacheWrite: 0,
+            pricingVersionId: versionId,
+            costAmount: 0.00625m,
+            costCurrency: "USD",
+            periodAccruals: accruals2,
+            capturedAt: capturedAt2);
+
+        await repo.AppendAsync(evt1);
+        await repo.AppendAsync(evt2);
+
+        // Retrieve Monthly events (both are in June 2026)
         var monthlyEvents = await repo.GetForCallerAsync(
             CallerId.From("multi@example.com"),
             monthlyPeriod);
 
-        monthlyEvents.Should().HaveCount(1);
-        monthlyEvents[0].EventId.Should().Be("multi-r1");
-        monthlyEvents[0].PeriodAccruals.Should().Contain(a => a.PeriodType == BudgetPeriodType.Monthly);
+        monthlyEvents.Should().HaveCount(2);
+        monthlyEvents.Select(e => e.EventId).Should().BeEquivalentTo("multi-r1", "multi-r2");
 
-        // Retrieve Weekly events
-        var weeklyEvents = await repo.GetForCallerAsync(
+        var monthlyEvt1 = monthlyEvents.First(e => e.EventId == "multi-r1");
+        monthlyEvt1.PeriodAccruals.Should().ContainSingle(a => a.PeriodType == BudgetPeriodType.Monthly);
+        var monthlyAccrual1 = monthlyEvt1.PeriodAccruals.Single(a => a.PeriodType == BudgetPeriodType.Monthly);
+        monthlyAccrual1.PeriodKey.Should().Be(monthlyPeriod.Key);
+        monthlyAccrual1.EffectiveGroupId.Should().Be(groupId);
+        monthlyAccrual1.BudgetSource.Should().Be(BudgetSource.Group);
+        monthlyAccrual1.EffectiveBudgetAmount.Amount.Should().Be(500m);
+        monthlyAccrual1.RunningSpendAfter.Should().Be(12.35m);
+
+        var monthlyEvt2 = monthlyEvents.First(e => e.EventId == "multi-r2");
+        monthlyEvt2.PeriodAccruals.Should().ContainSingle(a => a.PeriodType == BudgetPeriodType.Monthly);
+        var monthlyAccrual2 = monthlyEvt2.PeriodAccruals.Single(a => a.PeriodType == BudgetPeriodType.Monthly);
+        monthlyAccrual2.PeriodKey.Should().Be(monthlyPeriod.Key);
+        monthlyAccrual2.EffectiveGroupId.Should().BeNull();
+        monthlyAccrual2.BudgetSource.Should().Be(BudgetSource.UserOverride);
+        monthlyAccrual2.EffectiveBudgetAmount.Amount.Should().Be(1000m);
+        monthlyAccrual2.RunningSpendAfter.Should().Be(24.70m);
+
+        // Retrieve Weekly events for W25 (only multi-r1 should return)
+        var weeklyEvents1 = await repo.GetForCallerAsync(
             CallerId.From("multi@example.com"),
-            weeklyPeriod);
+            weeklyPeriod1);
 
-        weeklyEvents.Should().HaveCount(1);
-        weeklyEvents[0].EventId.Should().Be("multi-r1");
-        weeklyEvents[0].PeriodAccruals.Should().Contain(a => a.PeriodType == BudgetPeriodType.Weekly);
+        weeklyEvents1.Should().HaveCount(1);
+        weeklyEvents1[0].EventId.Should().Be("multi-r1");
+        weeklyEvents1[0].PeriodAccruals.Should().ContainSingle(a => a.PeriodType == BudgetPeriodType.Weekly);
+        var weeklyAccrual1 = weeklyEvents1[0].PeriodAccruals.Single(a => a.PeriodType == BudgetPeriodType.Weekly);
+        weeklyAccrual1.PeriodKey.Should().Be(weeklyPeriod1.Key);
+        weeklyAccrual1.EffectiveGroupId.Should().Be(groupId);
+        weeklyAccrual1.BudgetSource.Should().Be(BudgetSource.Group);
+        weeklyAccrual1.EffectiveBudgetAmount.Amount.Should().Be(100m);
+        weeklyAccrual1.RunningSpendAfter.Should().Be(5.20m);
+
+        // Retrieve Weekly events for W26 (only multi-r2 should return)
+        var weeklyEvents2 = await repo.GetForCallerAsync(
+            CallerId.From("multi@example.com"),
+            weeklyPeriod2);
+
+        weeklyEvents2.Should().HaveCount(1);
+        weeklyEvents2[0].EventId.Should().Be("multi-r2");
+        weeklyEvents2[0].PeriodAccruals.Should().ContainSingle(a => a.PeriodType == BudgetPeriodType.Weekly);
+        var weeklyAccrual2 = weeklyEvents2[0].PeriodAccruals.Single(a => a.PeriodType == BudgetPeriodType.Weekly);
+        weeklyAccrual2.PeriodKey.Should().Be(weeklyPeriod2.Key);
+        weeklyAccrual2.EffectiveGroupId.Should().BeNull();
+        weeklyAccrual2.BudgetSource.Should().Be(BudgetSource.UserOverride);
+        weeklyAccrual2.EffectiveBudgetAmount.Amount.Should().Be(200m);
+        weeklyAccrual2.RunningSpendAfter.Should().Be(8.40m);
     }
 }
