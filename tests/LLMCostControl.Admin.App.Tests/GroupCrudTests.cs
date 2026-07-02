@@ -226,4 +226,100 @@ public sealed class GroupCrudTests : TestContext, IDisposable
             cut.FindAll($".btn-remove-member").Should().BeEmpty();
         });
     }
+
+    [Fact]
+    public async Task AdminUser_BudgetValidation_RejectsNegative_AcceptsZero()
+    {
+        // Arrange & Seed
+        var authContext = this.AddTestAuthorization();
+        authContext.SetAuthorized("admin@example.com");
+        authContext.SetRoles("CostTracker.Admin");
+
+        // Seed a group in DB
+        var group = Group.Create("dev");
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            await db.Groups.AddAsync(group);
+            await db.SaveChangesAsync();
+        }
+
+        var cut = RenderComponent<Groups>();
+        cut.WaitForAssertion(() => cut.FindAll(".spinner-border").Should().BeEmpty());
+
+        // 1. Try to set negative budget (-50.00)
+        var amountInput = cut.WaitForElement($"#group-{group.Id} .input-budget-amount");
+        var setBudgetBtn = cut.Find($"#group-{group.Id} .btn-set-budget");
+
+        amountInput.Change("-50.00");
+        await cut.InvokeAsync(() => setBudgetBtn.Click());
+
+        // Assert error message rendered
+        cut.WaitForAssertion(() =>
+        {
+            var errorBlock = cut.Find($"#group-{group.Id} .error-message-block");
+            errorBlock.TextContent.Should().Contain("Monthly budget amount must be zero or positive.");
+        });
+
+        // Assert monthly budget was NOT saved in DB
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            var budget = await db.GroupBudgets.FirstOrDefaultAsync(b => b.GroupId == group.Id && b.PeriodType == BudgetPeriodType.Monthly);
+            budget.Should().BeNull();
+        }
+
+        // 2. Set zero budget (0.00)
+        var amountInput2 = cut.Find($"#group-{group.Id} .input-budget-amount");
+        var setBudgetBtn2 = cut.Find($"#group-{group.Id} .btn-set-budget");
+        amountInput2.Change("0.00");
+        await cut.InvokeAsync(() => setBudgetBtn2.Click());
+
+        // Assert monthly budget rendered as zero
+        cut.WaitForAssertion(() => cut.Find($"#group-{group.Id} .budget-amount-display").TextContent.Should().Contain("0.00"));
+
+        // Assert monthly budget saved as zero in DB
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            var budget = await db.GroupBudgets.FirstOrDefaultAsync(b => b.GroupId == group.Id && b.PeriodType == BudgetPeriodType.Monthly);
+            budget.Should().NotBeNull();
+            budget!.Amount.Amount.Should().Be(0.00m);
+        }
+
+        // 3. Try to set negative weekly budget (-25.00)
+        var weeklyAmountInput = cut.WaitForElement($"#group-{group.Id} .input-weekly-budget-amount");
+        var setWeeklyBudgetBtn = cut.Find($"#group-{group.Id} .btn-set-weekly-budget");
+
+        weeklyAmountInput.Change("-25.00");
+        await cut.InvokeAsync(() => setWeeklyBudgetBtn.Click());
+
+        // Assert error message rendered for weekly
+        cut.WaitForAssertion(() =>
+        {
+            var errorBlock = cut.Find($"#group-{group.Id} .error-message-block");
+            errorBlock.TextContent.Should().Contain("Weekly budget amount must be zero or positive.");
+        });
+
+        // Assert weekly budget was NOT saved in DB
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            var budget = await db.GroupBudgets.FirstOrDefaultAsync(b => b.GroupId == group.Id && b.PeriodType == BudgetPeriodType.Weekly);
+            budget.Should().BeNull();
+        }
+
+        // 4. Set zero weekly budget (0.00)
+        var weeklyAmountInput2 = cut.Find($"#group-{group.Id} .input-weekly-budget-amount");
+        var setWeeklyBudgetBtn2 = cut.Find($"#group-{group.Id} .btn-set-weekly-budget");
+        weeklyAmountInput2.Change("0.00");
+        await cut.InvokeAsync(() => setWeeklyBudgetBtn2.Click());
+
+        // Assert weekly budget rendered as zero
+        cut.WaitForAssertion(() => cut.Find($"#group-{group.Id} .weekly-budget-amount-display").TextContent.Should().Contain("0.00"));
+
+        // Assert weekly budget saved as zero in DB
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            var budget = await db.GroupBudgets.FirstOrDefaultAsync(b => b.GroupId == group.Id && b.PeriodType == BudgetPeriodType.Weekly);
+            budget.Should().NotBeNull();
+            budget!.Amount.Amount.Should().Be(0.00m);
+        }
+    }
 }
