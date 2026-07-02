@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LLMCostControl.Infrastructure.Pricing;
 
 namespace LLMCostControl.Infrastructure.Repositories;
 
@@ -16,20 +17,27 @@ namespace LLMCostControl.Infrastructure.Repositories;
 public class ModelPricingRepository
 {
     private readonly CostTrackerDbContext _db;
+    private readonly PricingRefreshOptions? _options;
 
-    /// <summary>Creates the repository with the given DbContext.</summary>
-    public ModelPricingRepository(CostTrackerDbContext db) => _db = db;
+    /// <summary>Creates the repository with the given DbContext and options.</summary>
+    public ModelPricingRepository(CostTrackerDbContext db, PricingRefreshOptions? options = null)
+    {
+        _db = db;
+        _options = options;
+    }
 
-    private static ModelPricing? ApplyDynamicStaleness(ModelPricing? pricing)
+    private ModelPricing? ApplyDynamicStaleness(ModelPricing? pricing)
     {
         if (pricing is null)
         {
             return null;
         }
 
-        if (pricing.StaleSince is null && DateTimeOffset.UtcNow - pricing.FetchedAt > TimeSpan.FromHours(1))
+        var cadence = _options?.GetCadence(pricing.Provider) ?? TimeSpan.FromHours(1);
+
+        if (pricing.StaleSince is null && DateTimeOffset.UtcNow - pricing.FetchedAt > cadence)
         {
-            pricing.StaleSince = pricing.FetchedAt + TimeSpan.FromHours(1);
+            pricing.StaleSince = pricing.FetchedAt + cadence;
         }
 
         return pricing;
@@ -41,6 +49,7 @@ public class ModelPricingRepository
         var res = await _db.ModelPricing
             .Where(p => p.Model == model)
             .OrderByDescending(p => p.EffectiveFrom)
+            .ThenByDescending(p => p.Id)
             .FirstOrDefaultAsync(ct);
         return ApplyDynamicStaleness(res);
     }
@@ -53,6 +62,7 @@ public class ModelPricingRepository
         var res = await _db.ModelPricing
             .Where(p => p.Provider == provider && p.Model == model)
             .OrderByDescending(p => p.EffectiveFrom)
+            .ThenByDescending(p => p.Id)
             .FirstOrDefaultAsync(ct);
         return ApplyDynamicStaleness(res);
     }
@@ -60,11 +70,10 @@ public class ModelPricingRepository
     /// <summary>Returns the latest pricing version for all models.</summary>
     public async Task<List<ModelPricing>> GetAllAsync(CancellationToken ct = default)
     {
-        var all = await _db.ModelPricing.ToListAsync(ct);
-        var filtered = all
+        var filtered = await _db.ModelPricing
             .GroupBy(p => new { p.Provider, p.Model })
-            .Select(g => g.OrderByDescending(p => p.EffectiveFrom).First())
-            .ToList();
+            .Select(g => g.OrderByDescending(p => p.EffectiveFrom).ThenByDescending(p => p.Id).First())
+            .ToListAsync(ct);
 
         foreach (var item in filtered)
         {
@@ -77,11 +86,11 @@ public class ModelPricingRepository
     /// <summary>Returns the latest pricing version for all models under a given provider.</summary>
     public async Task<List<ModelPricing>> GetByProviderAsync(Provider provider, CancellationToken ct = default)
     {
-        var all = await _db.ModelPricing.Where(p => p.Provider == provider).ToListAsync(ct);
-        var filtered = all
+        var filtered = await _db.ModelPricing
+            .Where(p => p.Provider == provider)
             .GroupBy(p => p.Model)
-            .Select(g => g.OrderByDescending(p => p.EffectiveFrom).First())
-            .ToList();
+            .Select(g => g.OrderByDescending(p => p.EffectiveFrom).ThenByDescending(p => p.Id).First())
+            .ToListAsync(ct);
 
         foreach (var item in filtered)
         {
@@ -99,6 +108,16 @@ public class ModelPricingRepository
     /// </summary>
     public async Task<Guid> InsertNewVersionAsync(ModelPricing pricing, CancellationToken ct = default)
     {
+        var (id, _) = await InsertNewVersionInternalAsync(pricing, ct);
+        return id;
+    }
+
+    /// <summary>
+    /// Inserts a new pricing version using insert-on-change logic internally.
+    /// Reports whether a new database row was actually inserted.
+    /// </summary>
+    public async Task<(Guid Id, bool Inserted)> InsertNewVersionInternalAsync(ModelPricing pricing, CancellationToken ct = default)
+    {
         var latest = await GetByProviderAndModelAsync(pricing.Provider, pricing.Model, ct);
 
         if (latest is not null &&
@@ -109,7 +128,7 @@ public class ModelPricingRepository
             string.Equals(latest.Currency, pricing.Currency, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(latest.Unit, pricing.Unit, StringComparison.OrdinalIgnoreCase))
         {
-            return latest.Id;
+            return (latest.Id, false);
         }
 
         var newVersion = ModelPricing.Create(
@@ -123,29 +142,41 @@ public class ModelPricingRepository
 
         await _db.ModelPricing.AddAsync(newVersion, ct);
         await _db.SaveChangesAsync(ct);
-        return newVersion.Id;
+        return (newVersion.Id, true);
     }
 
-    /// <summary>Replaces provider pricing atomically using insert-on-change.</summary>
-    public async Task ReplaceProviderPricingAsync(
+    /// <summary>Replaces provider pricing atomically using insert-on-change. Returns a map of updated model names to their new version IDs.</summary>
+    public async Task<IReadOnlyDictionary<string, Guid>> ReplaceProviderPricingAsync(
         Provider provider,
         IReadOnlyCollection<ModelPricing> entries,
         CancellationToken ct = default)
     {
+        var changed = new Dictionary<string, Guid>();
         foreach (var entry in entries)
         {
-            await InsertNewVersionAsync(entry, ct);
+            var (id, inserted) = await InsertNewVersionInternalAsync(entry, ct);
+            if (inserted)
+            {
+                changed[entry.Model] = id;
+            }
         }
+        return changed;
     }
 
-    /// <summary>Replaces multiple providers pricing atomically using insert-on-change.</summary>
-    public async Task ReplaceMultipleProvidersPricingAsync(
+    /// <summary>Replaces multiple providers pricing atomically using insert-on-change. Returns a map of updated model names to their new version IDs.</summary>
+    public async Task<IReadOnlyDictionary<string, Guid>> ReplaceMultipleProvidersPricingAsync(
         IReadOnlyCollection<ModelPricing> entries,
         CancellationToken ct = default)
     {
+        var changed = new Dictionary<string, Guid>();
         foreach (var entry in entries)
         {
-            await InsertNewVersionAsync(entry, ct);
+            var (id, inserted) = await InsertNewVersionInternalAsync(entry, ct);
+            if (inserted)
+            {
+                changed[entry.Model] = id;
+            }
         }
+        return changed;
     }
 }

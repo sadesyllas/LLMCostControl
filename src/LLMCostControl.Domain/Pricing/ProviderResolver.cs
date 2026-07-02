@@ -37,6 +37,11 @@ public static class ProviderResolver
             return true;
         }
 
+        if (int.TryParse(normalized, out _) || double.TryParse(normalized, out _))
+        {
+            return false;
+        }
+
         return Enum.TryParse(normalized, ignoreCase: true, out provider) && Enum.IsDefined(provider);
     }
 

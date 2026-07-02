@@ -139,7 +139,10 @@ public class CostTrackerDbContext : DbContext
         {
             e.ToTable("model_pricing");
             e.HasKey(x => x.Id);
-            e.Property(x => x.Provider).HasConversion<string>().IsRequired().HasMaxLength(20);
+            e.Property(x => x.Provider)
+                .HasConversion<ProviderConverter>()
+                .IsRequired()
+                .HasMaxLength(20);
             e.Property(x => x.Model).IsRequired().HasMaxLength(100);
             e.ComplexProperty(x => x.Prices, "prices", p =>
             {
@@ -170,7 +173,11 @@ public class CostTrackerDbContext : DbContext
                 .IsRequired()
                 .HasMaxLength(320);
             e.Property(x => x.Model).IsRequired().HasMaxLength(100);
-            e.Property(x => x.Provider).HasConversion<string>().IsRequired().HasMaxLength(20).HasColumnName("provider");
+            e.Property(x => x.Provider)
+                .HasConversion<ProviderConverter>()
+                .IsRequired()
+                .HasMaxLength(20)
+                .HasColumnName("provider");
             e.Property(x => x.TokensInput).HasColumnName("tokens_input");
             e.Property(x => x.TokensOutput).HasColumnName("tokens_output");
             e.Property(x => x.TokensCacheRead).HasColumnName("tokens_cache_read");
@@ -237,6 +244,21 @@ public class CostTrackerDbContext : DbContext
 
             e.HasIndex(x => new { x.EventId, x.PeriodType }).IsUnique();
         });
+    }
+
+    private sealed class ProviderConverter : ValueConverter<Provider, string>
+    {
+        public ProviderConverter()
+            : base(
+                v => ProviderResolver.ToCanonicalString(v),
+                v => ParseProvider(v))
+        {
+        }
+
+        private static Provider ParseProvider(string value)
+        {
+            return ProviderResolver.TryParseProvider(value, out var p) ? p : default;
+        }
     }
 
     private sealed class CallerIdConverter : ValueConverter<CallerId, string>

@@ -55,19 +55,12 @@ namespace LLMCostControl.Infrastructure.Data.Migrations
                 nullable: false,
                 defaultValue: Guid.Empty);
 
-            // Since we can't easily backfill a real foreign key to historical usage_events,
-            // we will seed a placeholder model_pricing version for legacy data if any exists.
-            var placeholderId = Guid.NewGuid();
+            // Ensure that we do not perform a lossy migration if historical usage data exists (M23-2).
             migrationBuilder.Sql($@"
                 DO $$
                 BEGIN
                     IF EXISTS (SELECT 1 FROM usage_events) THEN
-                        INSERT INTO model_pricing (
-                            ""Id"", ""Provider"", ""Model"", price_input, price_output, price_cache_read, price_cache_write, ""Currency"", ""Unit"", ""FetchedAt"", effective_from
-                        ) VALUES (
-                            '{placeholderId}', 'OpenAI', 'placeholder-legacy-migration', 0.0, 0.0, 0.0, 0.0, 'USD', 'per-1M-tokens', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                        );
-                        UPDATE usage_events SET pricing_version_id = '{placeholderId}';
+                        RAISE EXCEPTION 'Migration AddPricingVersioning failed: usage_events table is not empty. Upgrading populated databases is not supported to prevent data loss.';
                     END IF;
                 END $$;
             ");

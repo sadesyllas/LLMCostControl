@@ -44,9 +44,9 @@ public class StubPricingUpdatePublisher : IPricingUpdatePublisher
     public IReadOnlyList<(Provider Provider, IReadOnlyList<string> Models)> Published => _published;
 
     /// <summary>Records the event.</summary>
-    public Task PublishAsync(Provider provider, IReadOnlyList<string> updatedModels, CancellationToken ct = default)
+    public Task PublishAsync(Provider provider, IReadOnlyDictionary<string, Guid> modelVersionIds, CancellationToken ct = default)
     {
-        _published.Add((provider, updatedModels));
+        _published.Add((provider, modelVersionIds.Keys.ToList()));
         return Task.CompletedTask;
     }
 }

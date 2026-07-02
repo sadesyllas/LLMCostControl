@@ -38,7 +38,7 @@ public sealed class PricingRefreshOptions
     /// </summary>
     public TimeSpan GetCadence(Provider provider)
     {
-        var key = provider.ToString();
+        var key = ProviderResolver.ToCanonicalString(provider);
         return ProviderCadences.TryGetValue(key, out var cadence) ? cadence : DefaultCadence;
     }
 
@@ -48,7 +48,7 @@ public sealed class PricingRefreshOptions
     /// </summary>
     public TimeSpan GetJitter(Provider provider)
     {
-        var key = provider.ToString();
+        var key = ProviderResolver.ToCanonicalString(provider);
         return ProviderJitters.TryGetValue(key, out var jitter) ? jitter : DefaultJitter;
     }
 }

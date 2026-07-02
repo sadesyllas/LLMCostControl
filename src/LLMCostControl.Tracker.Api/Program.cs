@@ -27,6 +27,9 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 {
     builder.Services.AddDbContextFactory<CostTrackerDbContext>(options =>
         options.UseNpgsql(connectionString));
+    builder.Services.AddTransient<CostTrackerDbContext>(sp =>
+        sp.GetRequiredService<IDbContextFactory<CostTrackerDbContext>>().CreateDbContext());
+    builder.Services.AddPricingRefresh(builder.Configuration);
 }
 
 builder.Services.AddScoped<IPricingStore, PricingStore>();

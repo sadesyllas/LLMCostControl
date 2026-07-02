@@ -1,5 +1,6 @@
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions.StreamEvents;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Orleans.Streams;
@@ -8,12 +9,13 @@ namespace LLMCostControl.Grains.Storage;
 
 /// <summary>
 /// Silo-local hosted service that subscribes to the Orleans <c>pricing</c> stream
-/// and invalidates the local silo <see cref="IPricingCache"/> when an update is published.
+/// and refreshes the local silo <see cref="IPricingCache"/> when an update is published.
 /// </summary>
 public sealed class PricingStreamSubscriber : IHostedService
 {
     private readonly IClusterClient _clusterClient;
     private readonly IPricingCache _cache;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<PricingStreamSubscriber> _logger;
     private StreamSubscriptionHandle<PricingUpdatedStreamEvent>? _subscription;
 
@@ -21,15 +23,18 @@ public sealed class PricingStreamSubscriber : IHostedService
     /// Creates the subscriber.
     /// </summary>
     /// <param name="clusterClient">The Orleans cluster client.</param>
-    /// <param name="cache">The pricing cache to invalidate.</param>
+    /// <param name="cache">The pricing cache to update.</param>
+    /// <param name="scopeFactory">The service scope factory to resolve scoped stores.</param>
     /// <param name="logger">The logger instance.</param>
     public PricingStreamSubscriber(
         IClusterClient clusterClient,
         IPricingCache cache,
+        IServiceScopeFactory scopeFactory,
         ILogger<PricingStreamSubscriber> logger)
     {
         _clusterClient = clusterClient;
         _cache = cache;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -54,16 +59,25 @@ public sealed class PricingStreamSubscriber : IHostedService
                     var streamProvider = _clusterClient.GetStreamProvider("pricing");
                     var stream = streamProvider.GetStream<PricingUpdatedStreamEvent>("pricing", "updates");
 
-                    _subscription = await stream.SubscribeAsync((evt, token) =>
+                    _subscription = await stream.SubscribeAsync(async (evt, token) =>
                     {
                         _logger.LogInformation("Received pricing update stream event for {Count} models ({Provider}).", evt.UpdatedModels.Count, evt.Provider);
-                        foreach (var model in evt.UpdatedModels)
+                        using (var scope = _scopeFactory.CreateScope())
                         {
-                            // The event carries the provider, so invalidate the exact
-                            // per-(provider, model) composite cache key (§8.6).
-                            _cache.Remove(ProviderResolver.Key(evt.Provider, model));
+                            var store = scope.ServiceProvider.GetRequiredService<IPricingStore>();
+                            foreach (var model in evt.UpdatedModels)
+                            {
+                                var key = ProviderResolver.Key(evt.Provider, model);
+                                try
+                                {
+                                    await _cache.RefreshAsync(key, evt.Provider, model, store);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to refresh cached pricing for {Key} on stream update.", key);
+                                }
+                            }
                         }
-                        return Task.CompletedTask;
                     });
 
                     subscribed = true;

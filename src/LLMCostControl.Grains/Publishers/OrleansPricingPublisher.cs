@@ -23,7 +23,7 @@ public sealed class OrleansPricingPublisher : IPricingUpdatePublisher
     /// <summary>
     /// Publishes a pricing-updated event onto the <c>pricing</c> stream.
     /// </summary>
-    public async Task PublishAsync(Provider provider, IReadOnlyList<string> updatedModels, CancellationToken ct = default)
+    public async Task PublishAsync(Provider provider, IReadOnlyDictionary<string, Guid> modelVersionIds, CancellationToken ct = default)
     {
         var streamProvider = _clusterClient.GetStreamProvider("pricing");
         var stream = streamProvider.GetStream<PricingUpdatedStreamEvent>("pricing", "updates");
@@ -31,7 +31,8 @@ public sealed class OrleansPricingPublisher : IPricingUpdatePublisher
         var evt = new PricingUpdatedStreamEvent
         {
             Provider = provider,
-            UpdatedModels = updatedModels,
+            UpdatedModels = modelVersionIds.Keys.ToList(),
+            ModelVersionIds = modelVersionIds,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
 

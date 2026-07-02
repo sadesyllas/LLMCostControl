@@ -22,4 +22,8 @@ public sealed record PricingUpdatedStreamEvent
     /// <summary>When the update was persisted.</summary>
     [Id(2)]
     public required DateTimeOffset UpdatedAt { get; init; }
+
+    /// <summary>The dictionary mapping updated model names to their new pricing version IDs.</summary>
+    [Id(3)]
+    public required IReadOnlyDictionary<string, Guid> ModelVersionIds { get; init; }
 }

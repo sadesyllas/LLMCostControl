@@ -1,5 +1,7 @@
 using LLMCostControl.Domain.Pricing;
 using LLMCostControl.Grains.Abstractions;
+using LLMCostControl.Grains.Abstractions.StreamEvents;
+using Orleans.Streams;
 
 namespace LLMCostControl.Grains.Tests;
 
@@ -91,5 +93,46 @@ public class PricingGrainTests : GrainTestBase
 
         result.Should().NotBeNull();
         result!.IsStale.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task stream_push_refreshes_cached_pricing_to_new_version()
+    {
+        var model = "stream-test-model";
+        var key = ProviderResolver.Key(Provider.OpenAI, model);
+        
+        // Seed v1
+        var v1 = ModelPricing.Create(Provider.OpenAI, model, TokenPrices.Create(2.5m, 10m));
+        Store.SetPricing(v1);
+
+        var grain = GrainFactory.GetGrain<IPricingGrain>(key);
+        var r1 = await grain.GetPricingAsync();
+        r1!.Input.Should().Be(2.5m);
+        r1.PricingVersionId.Should().Be(v1.Id);
+
+        // Seed v2
+        var v2 = ModelPricing.Create(Provider.OpenAI, model, TokenPrices.Create(5m, 20m));
+        Store.SetPricing(v2);
+
+        // Publish stream event
+        var streamProvider = Client.GetStreamProvider("pricing");
+        var stream = streamProvider.GetStream<PricingUpdatedStreamEvent>("pricing", "updates");
+        
+        var dict = new Dictionary<string, Guid> { [model] = v2.Id };
+        await stream.OnNextAsync(new PricingUpdatedStreamEvent
+        {
+            Provider = Provider.OpenAI,
+            UpdatedModels = new List<string> { model },
+            ModelVersionIds = dict,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+
+        // Wait a brief moment for the subscriber to process the event
+        await Task.Delay(200);
+
+        // Next call should return v2's prices
+        var r2 = await grain.GetPricingAsync();
+        r2!.Input.Should().Be(5m);
+        r2.PricingVersionId.Should().Be(v2.Id);
     }
 }

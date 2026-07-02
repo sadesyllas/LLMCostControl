@@ -131,15 +131,18 @@ public sealed class PricingRefreshJob : BackgroundService
                 return;
             }
 
-            await _repository.ReplaceProviderPricingAsync(adapter.Provider, entries, ct);
+            var changed = await _repository.ReplaceProviderPricingAsync(adapter.Provider, entries, ct);
 
-            var modelNames = entries.Select(e => e.Model).ToList();
-            await _publisher.PublishAsync(adapter.Provider, modelNames, ct);
+            if (changed.Count > 0)
+            {
+                await _publisher.PublishAsync(adapter.Provider, changed, ct);
+            }
 
             _logger.LogInformation(
-                "Refreshed {Count} model(s) for provider {Provider}.",
+                "Refreshed {Count} model(s) for provider {Provider} ({ChangedCount} changed).",
                 entries.Count,
-                adapter.Provider);
+                adapter.Provider,
+                changed.Count);
         }
         catch (Exception ex)
         {

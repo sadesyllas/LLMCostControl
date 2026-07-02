@@ -10,7 +10,7 @@ namespace LLMCostControl.Infrastructure.Pricing;
 public interface IPricingUpdatePublisher
 {
     /// <summary>
-    /// Publishes a pricing-updated event for the given provider and model names.
+    /// Publishes a pricing-updated event for the given provider and model versions.
     /// </summary>
-    Task PublishAsync(Provider provider, IReadOnlyList<string> updatedModels, CancellationToken ct = default);
+    Task PublishAsync(Provider provider, IReadOnlyDictionary<string, Guid> modelVersionIds, CancellationToken ct = default);
 }
